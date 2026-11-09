@@ -7531,31 +7531,39 @@
       steps: state.steps,
       selectedPreset: state.selectedPreset,
       selectedPatternId: state.selectedPatternId,
-      patterns: state.patterns.map((pattern) => ({
-        id: pattern.id,
-        name: pattern.name,
-        steps: pattern.steps,
-        trackIds: [...getPatternTrackIds(pattern)],
-        cells: Object.fromEntries(Object.entries(pattern.cells).map(([trackId, cells]) => [trackId, [...cells]])),
-        variants: { ...pattern.variants },
-        ...(pattern.stepPianoNotes ? {
-          stepPianoNotes: Object.fromEntries(Object.entries(pattern.stepPianoNotes).map(([trackId, notes]) =>
-            [trackId, notes.map((note) => ({ ...note }))])),
-        } : {}),
-        gridResolution: getPatternGridResolution(pattern),
-        color: pattern.color,
-        volume: pattern.volume,
-        effects: makeDefaultEffects(pattern.effects),
-        effectSettings: makeDefaultEffectSettings(pattern.effectSettings),
-        effectChain: ensureTrackMixerState(pattern),
-      })),
+      patterns: state.patterns.map((pattern) => {
+        const trackIds = [...getPatternTrackIds(pattern)];
+        return {
+          id: pattern.id,
+          name: pattern.name,
+          steps: pattern.steps,
+          trackIds,
+          cells: Object.fromEntries(trackIds.flatMap((trackId) => {
+            const cells = pattern.cells[trackId];
+            return Array.isArray(cells) ? [[trackId, [...cells]]] : [];
+          })),
+          variants: Object.fromEntries(trackIds
+            .filter((trackId) => pattern.variants?.[trackId])
+            .map((trackId) => [trackId, pattern.variants[trackId]])),
+          ...(pattern.stepPianoNotes ? {
+            stepPianoNotes: Object.fromEntries(Object.entries(pattern.stepPianoNotes).map(([trackId, notes]) =>
+              [trackId, notes.map((note) => ({ ...note }))])),
+          } : {}),
+          gridResolution: getPatternGridResolution(pattern),
+          color: pattern.color,
+          volume: pattern.volume,
+          effects: makeDefaultEffects(pattern.effects),
+          effectSettings: makeDefaultEffectSettings(pattern.effectSettings),
+          effectChain: ensureTrackMixerState(pattern),
+        };
+      }),
       tracks: state.tracks.map((track) => ({
         id: track.id,
         sourceId: track.sourceId || null,
         name: track.name,
         kind: track.kind,
         color: track.color,
-        cells: track.cells,
+        cells: track.libraryOnly ? undefined : track.cells,
         volume: track.volume,
         muted: track.muted,
         solo: track.solo,
@@ -7638,15 +7646,25 @@
   }
 
   function persistStateSnapshot(snapshot, projectId = state.projectId) {
-    if (!state.currentUser || !state.projects.some((project) =>
-      project.id === projectId && project.ownerId === state.currentUser)) return false;
+    if (!state.currentUser) {
+      saveState.lastError = "No active profile is selected.";
+      return false;
+    }
+    if (!state.projects.some((project) => project.id === projectId && project.ownerId === state.currentUser)) {
+      saveState.lastError = "The active project is not available for this profile.";
+      return false;
+    }
     try {
       window.localStorage.setItem(getProjectStorageKey(projectId), JSON.stringify(snapshot));
-    } catch {
+    } catch (error) {
+      saveState.lastError = error?.name === "QuotaExceededError"
+        ? "browser storage is full."
+        : error?.message || "browser storage is unavailable.";
       $("#save-state").textContent = "Session-only changes";
       $(".save-dot").style.background = "#d3a34b";
       return false;
     }
+    saveState.lastError = "";
     const project = state.projects.find((item) => item.id === projectId);
     if (project) {
       project.updatedAt = Date.now();
@@ -7664,7 +7682,10 @@
   function flushSaveState() {
     window.clearTimeout(saveState.timeout);
     saveState.timeout = null;
-    if (!state.currentUser) return false;
+    if (!state.currentUser) {
+      saveState.lastError = "No active profile is selected.";
+      return false;
+    }
     return persistStateSnapshot(createStateSnapshot(), state.projectId);
   }
 
@@ -7783,7 +7804,7 @@
       renderProjectList();
       showToast(`${state.projectName} saved`);
     } else {
-      showToast("Could not save this project.");
+      showToast(`Could not save this project: ${saveState.lastError || "storage is unavailable."}`);
     }
   }
 
