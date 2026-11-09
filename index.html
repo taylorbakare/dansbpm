@@ -219,7 +219,9 @@
                         <button class="quiet-button keyboard-record-button" id="piano-keyboard-record-button" type="button" aria-pressed="false">Record keys</button>
                         <label class="pattern-select-control">
                           <span>INSTRUMENT</span>
-                          <select id="piano-instrument-select" aria-label="Piano roll instrument"></select>
+                          <button class="piano-instrument-picker-button" id="piano-instrument-select" type="button" aria-label="Piano roll instrument" aria-haspopup="dialog" aria-controls="step-instrument-dialog">
+                            <span id="piano-instrument-name">Choose instrument</span><span class="piano-instrument-picker-arrow" aria-hidden="true">▾</span>
+                          </button>
                         </label>
                         <label class="pattern-select-control">
                           <span>SNAP</span>

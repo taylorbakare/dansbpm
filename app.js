@@ -411,6 +411,7 @@
   const drumSamplesInput = $("#drum-samples-input");
   const toast = $("#toast");
   let stepInstrumentTargetTrackId = null;
+  let stepInstrumentPickerMode = "step";
 
   function makeTracks() {
     const tracks = [...TRACKS, ...LIBRARY_TRACKS].map((definition) => {
@@ -1151,27 +1152,28 @@
   }
 
   function renderPianoInstrumentOptions() {
-    const select = $("#piano-instrument-select");
+    const picker = $("#piano-instrument-select");
     const instruments = state.tracks.filter((track) => !track.sourceId);
-    select.replaceChildren();
-    const groups = new Map();
-    instruments.forEach((track) => {
-      const family = track.family || (track.kind === "sample" ? "Imported Sounds" : "Drums");
-      if (!groups.has(family)) {
-        const group = document.createElement("optgroup");
-        group.label = family;
-        groups.set(family, group);
-        select.append(group);
-      }
-      const option = document.createElement("option");
-      option.value = track.id;
-      option.textContent = track.name;
-      groups.get(family).append(option);
-    });
     if (!instruments.some((track) => track.id === state.selectedPianoTrackId)) {
       state.selectedPianoTrackId = instruments.find((track) => track.id === "piano-grand")?.id || instruments[0]?.id || "";
     }
-    select.value = state.selectedPianoTrackId;
+    const selected = instruments.find((track) => track.id === state.selectedPianoTrackId);
+    $("#piano-instrument-name").textContent = selected?.name || "Choose instrument";
+    picker.disabled = !selected;
+    picker.setAttribute("aria-label", selected ? `Piano roll instrument: ${selected.name}` : "Choose piano roll instrument");
+    picker.title = selected?.name || "Choose an instrument";
+  }
+
+  function selectPianoInstrument(trackId) {
+    if (state.keyboardRecording?.mode === "piano-roll") stopPlayback();
+    state.selectedPianoTrackId = trackId;
+    state.pianoNotes = state.pianoNotes.map((note) => ({ ...note, trackId }));
+    state.selectedPianoNoteIds.clear();
+    state.selectedPianoNoteId = null;
+    state.pianoSelectionFromMarquee = false;
+    renderPianoInstrumentOptions();
+    renderPianoRoll();
+    saveState();
   }
 
   function midiNoteName(midi) {
@@ -1869,18 +1871,30 @@
   }
 
   function getStepInstrumentGroup(track) {
-    if (track.family) return track.family;
     if (track.kind === "sample") return "User Samples";
-    return "Drums";
+    if (track.family === "Drums" || !track.family) {
+      const groups = {
+        kick: "Drums · Kicks",
+        snare: "Drums · Snares",
+        clap: "Drums · Claps",
+        hat: "Drums · Closed Hi-Hats",
+        openhat: "Drums · Open Hi-Hats",
+        rim: "Drums · Rims & Percussion",
+        drumkit: "Drum Kits",
+      };
+      return groups[track.kind] || "Drums · Other";
+    }
+    return track.family;
   }
 
-  function openStepInstrumentPicker(targetTrackId = null) {
+  function openStepInstrumentPicker(targetTrackId = null, pickerMode = "step") {
     stepInstrumentTargetTrackId = targetTrackId;
+    stepInstrumentPickerMode = pickerMode;
     const library = $("#step-instrument-library");
     library.replaceChildren();
     const groups = new Map();
     state.tracks
-      .filter((track) => !track.sourceId && track.kind !== "drumkit")
+      .filter((track) => !track.sourceId && (pickerMode === "piano-roll" || track.kind !== "drumkit"))
       .forEach((track) => {
         const groupName = getStepInstrumentGroup(track);
         if (!groups.has(groupName)) groups.set(groupName, []);
@@ -1904,10 +1918,15 @@
             choice.style.setProperty("--instrument-color", instrument.color);
             choice.textContent = instrument.name;
             choice.addEventListener("click", () => {
-              const added = stepInstrumentTargetTrackId
-                ? replacePatternInstrument(stepInstrumentTargetTrackId, instrument.id)
-                : addPatternInstrument(instrument.id);
-              if (!added) return;
+              previewInstrumentSound(instrument);
+              if (stepInstrumentPickerMode === "piano-roll") {
+                selectPianoInstrument(instrument.id);
+              } else {
+                const added = stepInstrumentTargetTrackId
+                  ? replacePatternInstrument(stepInstrumentTargetTrackId, instrument.id)
+                  : addPatternInstrument(instrument.id);
+                if (!added) return;
+              }
               $("#step-instrument-dialog").close();
               stepInstrumentTargetTrackId = null;
             });
@@ -1916,7 +1935,9 @@
         group.append(heading, choices);
         library.append(group);
       });
-    $("#step-instrument-title").textContent = targetTrackId ? "Choose a row instrument" : "Choose an instrument";
+    $("#step-instrument-title").textContent = pickerMode === "piano-roll"
+      ? "Choose a piano roll instrument"
+      : targetTrackId ? "Choose a row instrument" : "Choose an instrument";
     $("#step-instrument-dialog").showModal();
   }
 
@@ -2330,10 +2351,17 @@
       if (track.kind === "sample" && !track.sample) {
         throw new Error("This sample is not ready to preview.");
       }
+      const startTime = state.audioContext.currentTime + 0.015;
+      if (track.kind === "drumkit") {
+        [36, 42, 38, 42, 36, 46, 38, 42].forEach((midi, index) => {
+          playPianoNote(track, startTime + index * 0.18, midi, 0.15, 0.8, track, state.masterGain);
+        });
+        return;
+      }
       const duration = track.sample?.buffer.duration || (track.kind === "instrument" ? 0.65 : getStepDuration());
       playPianoNote(
         track,
-        state.audioContext.currentTime + 0.015,
+        startTime,
         getDefaultStepMidi(track),
         duration,
         0.8,
@@ -7836,16 +7864,7 @@
       event.dataTransfer.setData("application/x-pulsegrid-mel-source", JSON.stringify({ melId: mel.id }));
       event.dataTransfer.effectAllowed = "copy";
     });
-    $("#piano-instrument-select").addEventListener("change", (event) => {
-      if (state.keyboardRecording?.mode === "piano-roll") stopPlayback();
-      state.selectedPianoTrackId = event.target.value;
-      state.pianoNotes = state.pianoNotes.map((note) => ({ ...note, trackId: state.selectedPianoTrackId }));
-      state.selectedPianoNoteIds.clear();
-      state.selectedPianoNoteId = null;
-      state.pianoSelectionFromMarquee = false;
-      renderPianoRoll();
-      saveState();
-    });
+    $("#piano-instrument-select").addEventListener("click", () => openStepInstrumentPicker(null, "piano-roll"));
     $("#piano-draw-mode-button").addEventListener("click", () => {
       state.pianoDrawMode = !state.pianoDrawMode;
       renderPianoRoll();

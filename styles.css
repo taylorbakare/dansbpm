@@ -376,6 +376,10 @@ kbd { border: 1px solid #393a3f; border-radius: 3px; padding: 2px 4px; color: #b
 .piano-roll-context { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 8px; border-bottom: 1px solid #303136; padding-bottom: 7px; color: var(--accent); font-family: var(--mono); font-size: 9px; }
 .piano-roll-context[hidden] { display: none; }
 .piano-roll-toolbar .pattern-select-control select { max-width: 130px; }
+.piano-instrument-picker-button { max-width: 130px; display: flex; align-items: center; justify-content: space-between; gap: 7px; border: 0; background: transparent; padding: 0; color: #d3d4d0; font-size: 9px; text-align: left; cursor: pointer; }
+.piano-instrument-picker-button:disabled { color: #77787e; cursor: not-allowed; }
+.piano-instrument-picker-button #piano-instrument-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.piano-instrument-picker-arrow { color: #85868b; }
 .piano-roll-toolbar .quiet-button { height: 30px; }
 .piano-roll-toolbar #piano-draw-mode-button[aria-pressed="true"] { border-color: #687641; background: var(--accent-soft); color: var(--accent); }
 .piano-roll-scroll { min-height: 0; flex: 1; display: flex; overflow: auto; border: 1px solid #303136; background: #17181b; scrollbar-color: #45464a #1b1c1f; scrollbar-width: thin; }
