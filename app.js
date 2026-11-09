@@ -3017,6 +3017,24 @@
     }
   }
 
+  function toggleCurrentWorkspacePlayback() {
+    const workspace = !state.workspaceHidden && ["sequencer", "piano-roll"].includes(state.view)
+      ? state.view
+      : null;
+    const currentPlaybackActive = workspace
+      ? Boolean(state.workspacePlayers[workspace])
+      : state.isPlaying && state.playbackMode === "arrangement";
+    if (currentPlaybackActive) {
+      stopAllWorkspacePlayers();
+      if (state.isPlaying) stopPlayback();
+      return;
+    }
+    stopAllWorkspacePlayers();
+    if (state.isPlaying) stopPlayback();
+    if (workspace) toggleWorkspacePlayback(workspace);
+    else startPlayback("arrangement");
+  }
+
   function workspacePlaybackScheduler(workspace) {
     const player = state.workspacePlayers[workspace];
     if (!player || !state.audioContext) return;
@@ -8012,6 +8030,12 @@
       const isButton = target instanceof HTMLElement && target.tagName === "BUTTON";
       const dialogOpen = $("#help-dialog").open || $("#project-dialog").open || $("#source-browser-dialog").open ||
         $("#step-instrument-dialog").open || $("#step-track-mix-dialog").open;
+      if (event.code === "Space" && (event.ctrlKey || event.metaKey) && !event.altKey && !isTyping && !dialogOpen) {
+        event.preventDefault();
+        if (state.keyboardRecordingCountdown) cancelKeyboardRecordingCountdown();
+        toggleCurrentWorkspacePlayback();
+        return;
+      }
       if (!isTyping && !event.repeat && !event.ctrlKey && !event.metaKey && !event.altKey && !dialogOpen) {
         const key = event.key.toLowerCase();
         if (key === "p" && ["sequencer", "piano-roll"].includes(state.view) && !state.keyboardRecording) {
@@ -8068,7 +8092,8 @@
         event.preventDefault();
         nudgeSelectedArrangementItems(event.key === "ArrowRight" ? 1 : -1);
       }
-      if (event.code === "Space" && !isTyping && !isButton && !dialogOpen) {
+      if (event.code === "Space" && !isTyping && !isButton && !dialogOpen &&
+        !event.ctrlKey && !event.metaKey && !event.altKey) {
         event.preventDefault();
         if (state.keyboardRecordingCountdown) cancelKeyboardRecordingCountdown();
         if (state.isPlaying && state.playbackMode === "arrangement") stopPlayback();
