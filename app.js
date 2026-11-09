@@ -3378,6 +3378,8 @@
   }
 
   const DJ_DECK_IDS = ["A", "B"];
+  const DJ_ARRANGEMENT_BARS = 8;
+  const DJ_MAX_OFFSET_BARS = 2;
   const DJ_PAD_KEYS = ["KeyQ", "KeyW", "KeyE", "KeyR", "KeyA", "KeyS", "KeyD", "KeyF",
     "KeyZ", "KeyX", "KeyC", "KeyV", "Digit1", "Digit2", "Digit3", "Digit4"];
   const DJ_PAD_NOTES = [36, 39, 42, 46, 37, 38, 40, 44, 41, 43, 45, 47, 48, 50, 49, 51];
@@ -3388,8 +3390,8 @@
     crossfader: 50,
     liveSlots: Array(8).fill(null),
     decks: {
-      A: { sourceKey: "", volume: 0.8, filter: 20000, pitch: 0, reverse: false, playing: false, timerId: null, audioSource: null, filterNode: null, gainNode: null, nextStepTime: 0, stepIndex: 0, scratchRate: 1, isScratching: false },
-      B: { sourceKey: "", volume: 0.8, filter: 20000, pitch: 0, reverse: false, playing: false, timerId: null, audioSource: null, filterNode: null, gainNode: null, nextStepTime: 0, stepIndex: 0, scratchRate: 1, isScratching: false },
+      A: { sourceKey: "", volume: 0.8, filter: 20000, pitch: 0, reverse: false, startOffsetBars: 0, playing: false, timerId: null, audioSource: null, filterNode: null, gainNode: null, nextStepTime: 0, stepIndex: 0, scratchRate: 1, isScratching: false },
+      B: { sourceKey: "", volume: 0.8, filter: 20000, pitch: 0, reverse: false, startOffsetBars: 0, playing: false, timerId: null, audioSource: null, filterNode: null, gainNode: null, nextStepTime: 0, stepIndex: 0, scratchRate: 1, isScratching: false },
     },
   };
   let djVisualTimer = null;
@@ -3413,6 +3415,7 @@
             filter: deck.filter,
             pitch: deck.pitch,
             reverse: deck.reverse,
+            startOffsetBars: deck.startOffsetBars,
           }];
         })),
       };
@@ -3445,6 +3448,9 @@
         if (Number.isFinite(savedDeck.filter)) deck.filter = Math.max(200, Math.min(20000, savedDeck.filter));
         if (Number.isFinite(savedDeck.pitch)) deck.pitch = Math.max(-8, Math.min(8, savedDeck.pitch));
         deck.reverse = savedDeck.reverse === true;
+        if (Number.isFinite(savedDeck.startOffsetBars)) {
+          deck.startOffsetBars = Math.max(0, Math.min(DJ_MAX_OFFSET_BARS, savedDeck.startOffsetBars));
+        }
       });
     } catch (error) {
       showToast(`Could not restore DJ set: ${error.message || "saved data is unavailable"}`);
@@ -3613,6 +3619,8 @@
       const suffix = deckId.toLowerCase();
       const name = data?.source.name || "No track loaded";
       $(`#dj-track-name-${suffix}`).textContent = name;
+      const offset = djState.decks[deckId].startOffsetBars;
+      $(`#dj-live-offset-${suffix}`).textContent = `+${Number.isInteger(offset) ? offset : offset.toFixed(2)} bars`;
       [`dj-deck-waveform-${suffix}`, `dj-live-waveform-${suffix}`].forEach((id) => {
         const canvas = $(`#${id}`);
         canvas.setAttribute("aria-label", `${name}, Deck ${deckId} scrolling waveform`);
@@ -3810,10 +3818,21 @@
       const rate = isAudio ? (deck.audioSource?.playbackRate.value || getDjRate(deck)) : getDjRate(deck);
       const position = getDjVisualPosition(deck);
       const isLive = canvas.dataset.waveform === "live";
-      const liveSpan = 8 * 240 / state.bpm;
+      const liveSpan = DJ_ARRANGEMENT_BARS * 240 / state.bpm;
       const visibleSpan = isLive ? liveSpan : loopSpan * 2;
       const start = isLive ? Math.max(0, now - visibleSpan * 0.75) : Math.max(0, position - visibleSpan * 0.75);
       const playheadPosition = isLive ? now : position;
+      const liveStartTime = Number.isFinite(deck.dragPreviewStartTime)
+        ? deck.dragPreviewStartTime
+        : Number.isFinite(deck.visualStartTime)
+          ? deck.visualStartTime
+          : now + deck.startOffsetBars * 240 / state.bpm;
+      const liveStartPosition = Number.isFinite(deck.dragPreviewStartTime)
+        ? 0
+        : deck.visualStartPosition || 0;
+      const liveStopTime = Number.isFinite(deck.dragPreviewStartTime) || deck.playing
+        ? Infinity
+        : deck.visualStopTime ?? Infinity;
       const timelineWidth = Math.max(1, width - 16);
       const binCount = Math.max(48, Math.min(900, Math.floor(timelineWidth)));
       const stepWidth = timelineWidth / binCount;
@@ -3833,8 +3852,9 @@
         }
         for (let bin = 0; bin < binCount; bin += 1) {
           const timelineTime = start + (bin + 0.5) / binCount * visibleSpan;
+          if (isLive && (timelineTime < liveStartTime || timelineTime > liveStopTime)) continue;
           const sourcePosition = isLive
-            ? position + (timelineTime - now) * rate
+            ? liveStartPosition + (timelineTime - liveStartTime) * rate
             : timelineTime;
           const localTime = ((sourcePosition % loopSpan) + loopSpan) % loopSpan;
           const sourceTime = deck.reverse ? loopSpan - localTime : localTime;
@@ -3864,8 +3884,9 @@
         }
         for (let bin = 0; bin < binCount; bin += 1) {
           const timelineValue = start + (bin + 0.5) / binCount * visibleSpan;
+          if (isLive && (timelineValue < liveStartTime || timelineValue > liveStopTime)) continue;
           const timelineTick = isLive
-            ? position + (timelineValue - now) * state.bpm / 60 * 8 * rate
+            ? liveStartPosition + (timelineValue - liveStartTime) * state.bpm / 60 * 8 * rate
             : timelineValue;
           const phase = ((timelineTick % loopSpan) + loopSpan) % loopSpan;
           const sourceTick = deck.reverse ? loopSpan - 1 - phase : phase;
@@ -4033,7 +4054,10 @@
     const deck = djState.decks[deckId];
     if (deck.timerId !== null) window.clearInterval(deck.timerId);
     deck.timerId = null;
-    if (deck.playing && state.audioContext) deck.visualPosition = getDjVisualPosition(deck);
+    if (deck.playing && state.audioContext) {
+      deck.visualPosition = getDjVisualPosition(deck);
+      deck.visualStopTime = state.audioContext.currentTime;
+    }
     deck.isScratching = false;
     deck.scratchPointerId = null;
     deck.scratchRate = 1;
@@ -4060,8 +4084,12 @@
     try {
       await ensureAudio();
       ensureDjDeckAudio(deck);
-      const startTime = Math.max(state.audioContext.currentTime + 0.04, deck.syncedStartTime || 0);
+      const syncedStart = deck.syncedStartTime > 0;
+      const startTime = Math.max(state.audioContext.currentTime + 0.04, deck.syncedStartTime || 0) +
+        (syncedStart ? 0 : deck.startOffsetBars * 240 / state.bpm);
       deck.syncedStartTime = 0;
+      deck.dragPreviewStartTime = null;
+      deck.visualStopTime = null;
       deck.nextStepTime = startTime;
       deck.playing = true;
       if (source.type === "audio") {
@@ -4212,6 +4240,7 @@
       } else {
         deck.nextStepTime = startTime;
         deck.stepIndex = deck.pendingStepIndex;
+        deck.syncedStartTime = 0;
         deck.visualStartTime = startTime;
         const cycleTicks = getDjCycleTicks(getDjSource(deck.sourceKey));
         deck.visualStartPosition = deck.reverse
@@ -4247,12 +4276,12 @@
   function addDjLiveSlot(deckId) {
     const source = getDjSource(djState.decks[deckId].sourceKey);
     if (!source) {
-      showToast("Choose a live source before adding it to the Live Track.");
+      showToast("Choose a live source before adding it to a cue slot.");
       return;
     }
     const index = djState.liveSlots.findIndex((slot) => !slot);
     if (index < 0) {
-      showToast("All Live Track slots are full.");
+      showToast("All cue slots are full.");
       return;
     }
     djState.liveSlots[index] = { sourceKey: djState.decks[deckId].sourceKey, name: source.name };
@@ -4267,6 +4296,7 @@
     stopDjDeck(deckId);
     djState.decks[deckId].sourceKey = slot.sourceKey;
     djState.decks[deckId].visualStartTime = null;
+    djState.decks[deckId].visualStopTime = null;
     djState.decks[deckId].visualStartPosition = 0;
     djState.decks[deckId].visualPosition = 0;
     saveDjState();
@@ -4333,6 +4363,57 @@
   }
 
   function bindDjEvents() {
+    document.querySelectorAll(".dj-live-waveform-row").forEach((row) => {
+      const deckId = row.dataset.deck;
+      if (!DJ_DECK_IDS.includes(deckId)) return;
+      let pointerId = null;
+      let dragStartX = 0;
+      let dragStartOffset = 0;
+
+      row.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0) return;
+        const deck = djState.decks[deckId];
+        pointerId = event.pointerId;
+        dragStartX = event.clientX;
+        dragStartOffset = deck.startOffsetBars;
+        row.setPointerCapture(pointerId);
+        row.classList.add("is-dragging");
+        setActiveDjDeck(deckId);
+        event.preventDefault();
+      });
+      row.addEventListener("pointermove", (event) => {
+        if (pointerId !== event.pointerId) return;
+        const deck = djState.decks[deckId];
+        const canvas = row.querySelector("canvas");
+        const width = Math.max(1, canvas?.getBoundingClientRect().width || row.getBoundingClientRect().width);
+        const offset = dragStartOffset +
+          (event.clientX - dragStartX) / width * DJ_MAX_OFFSET_BARS;
+        deck.startOffsetBars = Math.max(0, Math.min(DJ_MAX_OFFSET_BARS, Math.round(offset * 4) / 4));
+        deck.dragPreviewStartTime = (state.audioContext?.currentTime || 0) +
+          deck.startOffsetBars * 240 / state.bpm;
+        renderDjLiveView();
+      });
+      const finishArrangementDrag = (event) => {
+        if (pointerId !== event.pointerId) return;
+        pointerId = null;
+        row.classList.remove("is-dragging");
+        const deck = djState.decks[deckId];
+        const wasPlaying = deck.playing;
+        if (wasPlaying) stopDjDeck(deckId);
+        deck.dragPreviewStartTime = null;
+        deck.syncedStartTime = 0;
+        deck.visualStartTime = null;
+        deck.visualStopTime = null;
+        deck.visualStartPosition = 0;
+        deck.visualPosition = 0;
+        saveDjState();
+        renderDjLiveView();
+        if (wasPlaying) startDjDeck(deckId);
+      };
+      row.addEventListener("pointerup", finishArrangementDrag);
+      row.addEventListener("pointercancel", finishArrangementDrag);
+    });
+
     DJ_DECK_IDS.forEach((deckId) => {
       const suffix = deckId.toLowerCase();
       $(`#dj-deck-${suffix}`).addEventListener("click", () => setActiveDjDeck(deckId));
@@ -4342,6 +4423,7 @@
         djState.decks[deckId].pendingStepIndex = 0;
         djState.decks[deckId].syncedStartTime = 0;
         djState.decks[deckId].visualStartTime = null;
+        djState.decks[deckId].visualStopTime = null;
         djState.decks[deckId].visualStartPosition = 0;
         djState.decks[deckId].visualPosition = 0;
         setActiveDjDeck(deckId);

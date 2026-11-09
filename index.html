@@ -348,7 +348,7 @@
                             <button class="quiet-button dj-sync" id="dj-sync-a" type="button">Sync</button>
                             <button class="quiet-button dj-nudge" data-deck="A" data-direction="-1" type="button" aria-label="Nudge deck A backward">−</button>
                             <button class="quiet-button dj-nudge" data-deck="A" data-direction="1" type="button" aria-label="Nudge deck A forward">+</button>
-                            <button class="quiet-button dj-add-slot" data-deck="A" type="button">Add to Live Track</button>
+                            <button class="quiet-button dj-add-slot" data-deck="A" type="button">Add Cue Slot</button>
                           </div>
                           <label class="dj-knob-control" for="dj-volume-a"><span>VOLUME</span><input id="dj-volume-a" type="range" min="0" max="100" value="80" aria-label="Deck A volume"></label>
                           <label class="dj-knob-control" for="dj-filter-a"><span>FILTER</span><input id="dj-filter-a" type="range" min="200" max="20000" step="100" value="20000" aria-label="Deck A filter"></label>
@@ -376,25 +376,25 @@
                             <button class="quiet-button dj-sync" id="dj-sync-b" type="button">Sync</button>
                             <button class="quiet-button dj-nudge" data-deck="B" data-direction="-1" type="button" aria-label="Nudge deck B backward">−</button>
                             <button class="quiet-button dj-nudge" data-deck="B" data-direction="1" type="button" aria-label="Nudge deck B forward">+</button>
-                            <button class="quiet-button dj-add-slot" data-deck="B" type="button">Add to Live Track</button>
+                            <button class="quiet-button dj-add-slot" data-deck="B" type="button">Add Cue Slot</button>
                           </div>
                           <label class="dj-knob-control" for="dj-volume-b"><span>VOLUME</span><input id="dj-volume-b" type="range" min="0" max="100" value="80" aria-label="Deck B volume"></label>
                           <label class="dj-knob-control" for="dj-filter-b"><span>FILTER</span><input id="dj-filter-b" type="range" min="200" max="20000" step="100" value="20000" aria-label="Deck B filter"></label>
                         </section>
                       </div>
-                      <section class="dj-live-track" aria-labelledby="dj-live-track-title">
+                      <section class="dj-arrangement" aria-labelledby="dj-arrangement-title">
                         <div class="dj-section-heading">
                           <div>
-                            <h2 id="dj-live-track-title">Live Track</h2>
+                            <h2 id="dj-arrangement-title">Arrangement</h2>
                           </div>
                         </div>
                         <div class="dj-live-deck-view" id="dj-live-deck-view">
-                          <div class="dj-live-waveform-row">
-                            <span>DECK A</span>
+                          <div class="dj-live-waveform-row" data-deck="A">
+                            <span>DECK A <output id="dj-live-offset-a">+0 bars</output></span>
                             <canvas class="dj-waveform dj-live-waveform" id="dj-live-waveform-a" data-deck="A" data-waveform="live" aria-label="Deck A live waveform"></canvas>
                           </div>
-                          <div class="dj-live-waveform-row">
-                            <span>DECK B</span>
+                          <div class="dj-live-waveform-row" data-deck="B">
+                            <span>DECK B <output id="dj-live-offset-b">+0 bars</output></span>
                             <canvas class="dj-waveform dj-live-waveform" id="dj-live-waveform-b" data-deck="B" data-waveform="live" aria-label="Deck B live waveform"></canvas>
                           </div>
                         </div>
@@ -402,7 +402,7 @@
                       <section class="dj-cue-slots" aria-labelledby="dj-cue-slots-title">
                         <div class="dj-section-heading">
                           <div>
-                            <h2 id="dj-cue-slots-title">Live Track Cues</h2>
+                            <h2 id="dj-cue-slots-title">Cue Slots</h2>
                             <p>Save up to eight pattern, Mel, or audio cues for instant deck loading.</p>
                           </div>
                         </div>
