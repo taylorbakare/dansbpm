@@ -3403,8 +3403,8 @@
     masterFilter: 20000,
     liveSlots: Array(8).fill(null),
     decks: {
-      A: { sourceKey: "", volume: 0.8, filter: 20000, eqLow: 0, eqMid: 0, eqHigh: 0, pitch: 0, reverse: false, startOffsetBars: 0, playing: false, timerId: null, audioSource: null, songSources: new Set(), songGains: new Map(), songEvents: new Set(), songAnchorTime: 0, songPositionBar: 0, songRate: 1, songDurationBars: 0, songEndTime: 0, filterNode: null, eqLowNode: null, eqMidNode: null, eqHighNode: null, gainNode: null, audioContext: null, djMasterInput: null, nextStepTime: 0, stepIndex: 0, scratchRate: 1, nudgeRate: 1, isScratching: false },
-      B: { sourceKey: "", volume: 0.8, filter: 20000, eqLow: 0, eqMid: 0, eqHigh: 0, pitch: 0, reverse: false, startOffsetBars: 0, playing: false, timerId: null, audioSource: null, songSources: new Set(), songGains: new Map(), songEvents: new Set(), songAnchorTime: 0, songPositionBar: 0, songRate: 1, songDurationBars: 0, songEndTime: 0, filterNode: null, eqLowNode: null, eqMidNode: null, eqHighNode: null, gainNode: null, audioContext: null, djMasterInput: null, nextStepTime: 0, stepIndex: 0, scratchRate: 1, nudgeRate: 1, isScratching: false },
+      A: { sourceKey: "", volume: 0.8, filter: 20000, eqLow: 0, eqMid: 0, eqHigh: 0, pitch: 0, syncRate: 1, reverse: false, startOffsetBars: 0, playing: false, timerId: null, audioSource: null, songSources: new Set(), songGains: new Map(), songEvents: new Set(), songAnchorTime: 0, songPositionBar: 0, songRate: 1, songDurationBars: 0, songEndTime: 0, filterNode: null, eqLowNode: null, eqMidNode: null, eqHighNode: null, gainNode: null, audioContext: null, djMasterInput: null, nextStepTime: 0, stepIndex: 0, scratchRate: 1, nudgeRate: 1, isScratching: false },
+      B: { sourceKey: "", volume: 0.8, filter: 20000, eqLow: 0, eqMid: 0, eqHigh: 0, pitch: 0, syncRate: 1, reverse: false, startOffsetBars: 0, playing: false, timerId: null, audioSource: null, songSources: new Set(), songGains: new Map(), songEvents: new Set(), songAnchorTime: 0, songPositionBar: 0, songRate: 1, songDurationBars: 0, songEndTime: 0, filterNode: null, eqLowNode: null, eqMidNode: null, eqHighNode: null, gainNode: null, audioContext: null, djMasterInput: null, nextStepTime: 0, stepIndex: 0, scratchRate: 1, nudgeRate: 1, isScratching: false },
     },
   };
   let djVisualTimer = null;
@@ -3473,6 +3473,7 @@
             eqMid: deck.eqMid,
             eqHigh: deck.eqHigh,
             pitch: deck.pitch,
+            syncRate: deck.syncRate,
             reverse: deck.reverse,
             startOffsetBars: deck.startOffsetBars,
           }];
@@ -3514,6 +3515,7 @@
         if (Number.isFinite(savedDeck.eqMid)) deck.eqMid = Math.max(-12, Math.min(12, savedDeck.eqMid));
         if (Number.isFinite(savedDeck.eqHigh)) deck.eqHigh = Math.max(-12, Math.min(12, savedDeck.eqHigh));
         if (Number.isFinite(savedDeck.pitch)) deck.pitch = Math.max(-8, Math.min(8, savedDeck.pitch));
+        if (Number.isFinite(savedDeck.syncRate)) deck.syncRate = Math.max(0.25, Math.min(4, savedDeck.syncRate));
         deck.reverse = savedDeck.reverse === true;
         if (Number.isFinite(savedDeck.startOffsetBars)) {
           deck.startOffsetBars = Math.max(0, Math.min(DJ_MAX_OFFSET_BARS, savedDeck.startOffsetBars));
@@ -3578,6 +3580,53 @@
       groups.unshift({ label: "Arrangement", items: [{ key: "song:current", name: `${state.projectName || "Current Song"} (Full Song)` }] });
     }
     return groups;
+  }
+
+  function getDjSourceMetadata(source) {
+    if (!source) return { bpm: null, key: null };
+    if (source.type === "audio") {
+      const clip = source.item.clips.find((item) => item.buffer);
+      const metadata = normalizeAudioMetadata(clip?.audioMetadata || source.item.audioMetadata);
+      return metadata;
+    }
+
+    const noteGroups = [];
+    if (source.type === "pattern") {
+      noteGroups.push(...Object.values(source.item.stepPianoNotes || {}));
+    } else if (source.type === "mel") {
+      noteGroups.push(source.item.notes || []);
+    } else if (source.type === "song") {
+      state.patternClips.forEach((clip) => {
+        const pattern = getPattern(clip.patternId);
+        if (pattern) noteGroups.push(...Object.values(pattern.stepPianoNotes || {}));
+      });
+      state.melTracks.forEach((track) => track.clips.forEach((clip) => {
+        const mel = getMel(clip.melId);
+        if (mel) noteGroups.push(mel.notes || []);
+      }));
+      const keyVotes = state.arrangementTracks
+        .flatMap((track) => track.clips)
+        .map((clip) => normalizeAudioMetadata(clip.audioMetadata).key)
+        .filter(Boolean);
+      if (keyVotes.length) {
+        const counts = new Map();
+        keyVotes.forEach((key) => counts.set(key, (counts.get(key) || 0) + 1));
+        return { bpm: state.bpm, key: [...counts].sort((a, b) => b[1] - a[1])[0][0] };
+      }
+    }
+
+    const chroma = Array(12).fill(0);
+    noteGroups.flat().forEach((note) => {
+      if (!Number.isFinite(note.midi)) return;
+      const pitchClass = (Math.round(note.midi) % 12 + 12) % 12;
+      chroma[pitchClass] += Math.max(0.01, note.durationTicks || 1) * (note.velocity || 1);
+    });
+    return { bpm: state.bpm, key: getKeyFromChroma(chroma) };
+  }
+
+  function getDjSyncTempo(source, deck) {
+    const baseBpm = getDjSourceMetadata(source).bpm || state.bpm;
+    return baseBpm * getDjRate(deck);
   }
 
   function updateDjDial(input, formatValue) {
@@ -3778,6 +3827,7 @@
       const suffix = deckId.toLowerCase();
       const name = data?.source.name || "No track loaded";
       $(`#dj-track-name-${suffix}`).textContent = name;
+      updateDjDeckDisplays(deckId);
       const offset = djState.decks[deckId].startOffsetBars;
       $(`#dj-live-offset-${suffix}`).textContent = `+${Number.isInteger(offset) ? offset : offset.toFixed(2)} bars`;
       [`dj-deck-waveform-${suffix}`, `dj-live-waveform-${suffix}`].forEach((id) => {
@@ -4115,7 +4165,8 @@
   }
 
   function getDjRate(deck) {
-    return Math.max(0.25, (1 + deck.pitch / 100) * (deck.scratchRate || 1) * (deck.nudgeRate || 1));
+    return Math.max(0.25, (1 + deck.pitch / 100) * (deck.scratchRate || 1) *
+      (deck.nudgeRate || 1) * (deck.syncRate || 1));
   }
 
   function getDjVisualPosition(deck) {
@@ -4157,6 +4208,9 @@
     const suffix = deckId.toLowerCase();
     const source = getDjSource(deck.sourceKey);
     $(`#dj-track-name-${suffix}`).textContent = source?.name || "No track loaded";
+    const metadata = getDjSourceMetadata(source);
+    const displayedBpm = Number.isFinite(metadata.bpm) ? Math.round(metadata.bpm * getDjRate(deck)) : "—";
+    $(`#dj-metadata-${suffix}`).textContent = `BPM ${displayedBpm} · KEY ${metadata.key || "—"}`;
     $(`#dj-pitch-value-${suffix}`).textContent = `${deck.pitch >= 0 ? "+" : ""}${deck.pitch.toFixed(1)}%`;
     const timeline = source ? getDjTimelineData(deckId) : null;
     let display = "00:00";
@@ -4672,41 +4726,154 @@
     }
   }
 
+  function getDjBeatPhase(deck) {
+    const source = getDjSource(deck.sourceKey);
+    if (!source) return 0;
+    if (source.type === "audio") {
+      const deckId = DJ_DECK_IDS.find((id) => djState.decks[id] === deck);
+      const timeline = deckId ? getDjTimelineData(deckId) : null;
+      if (!timeline?.loopSeconds) return 0;
+      const loopPosition = getDjVisualPosition(deck) % timeline.loopSeconds;
+      const sourcePosition = timeline.offset + (deck.reverse
+        ? timeline.loopSeconds - loopPosition
+        : loopPosition);
+      const bpm = getDjSourceMetadata(source).bpm || state.bpm;
+      return ((sourcePosition * bpm / 60) % 1 + 1) % 1;
+    }
+    const cycleTicks = getDjCycleTicks(source);
+    if (!cycleTicks) return 0;
+    const progress = getDjVisualPosition(deck) % cycleTicks;
+    const contentPosition = deck.reverse ? cycleTicks - 1 - progress : progress;
+    return ((contentPosition / 8) % 1 + 1) % 1;
+  }
+
+  function getDjNextBeatTime(other, otherBpm, now) {
+    if (other.playing) {
+      const untilBeat = (1 - getDjBeatPhase(other)) % 1;
+      return Math.max(now + 0.04, now + untilBeat * 60 / otherBpm);
+    }
+    const beatDuration = 60 / otherBpm;
+    return Math.ceil((now + 0.02) / beatDuration) * beatDuration;
+  }
+
+  function resyncDjAudio(deck, source, deckId, deltaBeats, now) {
+    const timeline = getDjTimelineData(deckId);
+    const clip = timeline?.clip;
+    if (!clip?.buffer || !timeline.loopSeconds || !state.audioContext) return;
+    const bpm = getDjSourceMetadata(source).bpm || state.bpm;
+    const progressAdjustment = deltaBeats * (deck.reverse ? -1 : 1) * 60 / bpm;
+    const rawPosition = getDjVisualPosition(deck) + progressAdjustment;
+    const position = ((rawPosition % timeline.loopSeconds) + timeline.loopSeconds) % timeline.loopSeconds;
+    const buffer = deck.reverse ? getReversedDjBuffer(clip.buffer) : clip.buffer;
+    const loopStart = deck.reverse
+      ? clip.buffer.duration - (timeline.offset + timeline.loopSeconds)
+      : timeline.offset;
+    const player = state.audioContext.createBufferSource();
+    player.buffer = buffer;
+    player.loop = true;
+    player.loopStart = loopStart;
+    player.loopEnd = loopStart + timeline.loopSeconds;
+    player.playbackRate.value = getDjRate(deck);
+    player.connect(deck.eqLowNode);
+    player.onended = () => {
+      if (deck.audioSource === player) deck.audioSource = null;
+      player.disconnect();
+    };
+    const startTime = now + 0.04;
+    player.start(startTime, loopStart + position);
+    if (deck.audioSource) {
+      const previousSource = deck.audioSource;
+      previousSource.onended = () => previousSource.disconnect();
+      previousSource.stop(startTime);
+    }
+    deck.audioSource = player;
+    deck.visualStartTime = startTime;
+    deck.visualStartPosition = position;
+    deck.visualPosition = position;
+  }
+
+  function resyncDjTimeline(deck, source, deckId, deltaBeats, now) {
+    const cycleTicks = getDjCycleTicks(source);
+    if (!cycleTicks || !state.audioContext) return;
+    const progress = getDjVisualPosition(deck);
+    const contentPosition = deck.reverse
+      ? cycleTicks - 1 - (progress % cycleTicks)
+      : progress % cycleTicks;
+    const correctedContentPosition = ((contentPosition + deltaBeats * 8) % cycleTicks + cycleTicks) % cycleTicks;
+
+    if (source.type === "song") {
+      const positionBar = Math.max(0, Math.min(deck.songDurationBars, correctedContentPosition / PIANO_TICKS_PER_BAR));
+      const startTime = now + 0.04;
+      deck.songPositionBar = positionBar;
+      deck.songAnchorTime = startTime;
+      deck.songRate = getDjRate(deck);
+      deck.songEndTime = getDjSongTimeForBar(deck, deck.songDurationBars);
+      deck.visualStartTime = startTime;
+      deck.visualStartPosition = positionBar * PIANO_TICKS_PER_BAR;
+      deck.visualPosition = deck.visualStartPosition;
+      deck.songSources.forEach((player) => {
+        player.onended = () => {
+          deck.songSources.delete(player);
+          player.disconnect();
+        };
+        try { player.stop(startTime); } catch { /* A scheduled source may already have stopped. */ }
+      });
+      deck.songEvents.clear();
+      window.setTimeout(() => {
+        if (deck.playing) scheduleDjDeck(deckId);
+      }, 45);
+      return;
+    }
+
+    deck.stepIndex = ((deck.stepIndex + Math.round(deltaBeats * 8)) % cycleTicks + cycleTicks) % cycleTicks;
+    deck.nextStepTime = Math.max(now + 0.04, deck.nextStepTime);
+    deck.visualStartTime = now;
+    deck.visualStartPosition = deck.reverse
+      ? ((cycleTicks - 1 - correctedContentPosition) % cycleTicks + cycleTicks) % cycleTicks
+      : correctedContentPosition;
+    deck.visualPosition = deck.visualStartPosition;
+  }
+
   function syncDjDeck(deckId) {
     const deck = djState.decks[deckId];
-    const other = djState.decks[deckId === "A" ? "B" : "A"];
-    const deckCycleTicks = getDjCycleTicks(getDjSource(deck.sourceKey));
-    const otherCycleTicks = getDjCycleTicks(getDjSource(other.sourceKey));
-    const now = state.audioContext?.currentTime || 0;
-    const beatDuration = 60 / state.bpm;
-    const startTime = other.playing && other.timerId !== null
-      ? Math.max(now + 0.04, other.nextStepTime)
-      : Math.ceil((now + 0.02) / beatDuration) * beatDuration;
-    const syncedPhase = other.playing && deckCycleTicks && otherCycleTicks
-      ? Math.floor((other.stepIndex % otherCycleTicks) / otherCycleTicks * deckCycleTicks)
-      : 0;
-    deck.pendingStepIndex = deck.reverse && deckCycleTicks
-      ? (deckCycleTicks - 1 - syncedPhase + deckCycleTicks) % deckCycleTicks
-      : syncedPhase;
-    deck.syncedStartTime = startTime;
-    if (deck.playing) {
-      const source = getDjSource(deck.sourceKey);
-      if (source?.type === "audio") {
-        stopDjDeck(deckId);
-        startDjDeck(deckId);
-      } else {
-        deck.nextStepTime = startTime;
-        deck.stepIndex = deck.pendingStepIndex;
-        deck.syncedStartTime = 0;
-        deck.visualStartTime = startTime;
-        const cycleTicks = getDjCycleTicks(getDjSource(deck.sourceKey));
-        deck.visualStartPosition = deck.reverse
-          ? (cycleTicks - 1 - deck.stepIndex + cycleTicks) % cycleTicks
-          : deck.stepIndex;
-        deck.visualPosition = deck.visualStartPosition;
-      }
+    const otherId = deckId === "A" ? "B" : "A";
+    const other = djState.decks[otherId];
+    const source = getDjSource(deck.sourceKey);
+    const otherSource = getDjSource(other.sourceKey);
+    if (!source) {
+      showToast("Choose a live source for this deck first.");
+      return;
     }
-    showToast(`Deck ${deckId} synced${other.playing ? ` to Deck ${deckId === "A" ? "B" : "A"}` : " to the next beat"}.`);
+    const now = state.audioContext?.currentTime || 0;
+    const otherBpm = otherSource ? getDjSyncTempo(otherSource, other) : state.bpm;
+    const otherPhase = other.playing ? getDjBeatPhase(other) : 0;
+    const targetPhase = deck.playing ? getDjBeatPhase(deck) : 0;
+    let deltaBeats = otherPhase - targetPhase;
+    deltaBeats = ((deltaBeats + 0.5) % 1 + 1) % 1 - 0.5;
+
+    if (deck.nudgeTimer !== null) window.clearTimeout(deck.nudgeTimer);
+    deck.nudgeTimer = null;
+    deck.nudgeRate = 1;
+    const baseBpm = getDjSourceMetadata(source).bpm || state.bpm;
+    const manualRate = (1 + deck.pitch / 100) * (deck.scratchRate || 1);
+    deck.syncRate = Math.max(0.25, Math.min(4, otherBpm / (baseBpm * manualRate)));
+    if (source.type === "song") updateDjSongRate(deck);
+    if (deck.audioSource) {
+      deck.audioSource.playbackRate.setTargetAtTime(getDjRate(deck), now, 0.015);
+    }
+
+    if (deck.playing) {
+      if (source.type === "audio") resyncDjAudio(deck, source, deckId, deltaBeats, now);
+      else resyncDjTimeline(deck, source, deckId, deltaBeats, now);
+      deck.syncedStartTime = 0;
+    } else {
+      const cycleTicks = getDjCycleTicks(source);
+      if (cycleTicks) deck.pendingStepIndex = deck.reverse ? cycleTicks - 1 : 0;
+      deck.syncedStartTime = getDjNextBeatTime(other, otherBpm, now);
+    }
+    updateDjDeckUI(deckId);
+    saveDjState();
+    showToast(`Deck ${deckId} synced${otherSource ? ` to Deck ${otherId}` : " to the next beat"}.`);
   }
 
   function nudgeDjDeck(deckId, direction) {
@@ -4761,6 +4928,7 @@
     const deckId = djState.activeDeck;
     stopDjDeck(deckId);
     djState.decks[deckId].sourceKey = slot.sourceKey;
+    djState.decks[deckId].syncRate = 1;
     djState.decks[deckId].visualStartTime = null;
     djState.decks[deckId].visualStopTime = null;
     djState.decks[deckId].visualStartPosition = 0;
@@ -5010,6 +5178,7 @@
       $(`#dj-source-${suffix}`).addEventListener("change", (event) => {
         stopDjDeck(deckId);
         djState.decks[deckId].sourceKey = event.target.value;
+        djState.decks[deckId].syncRate = 1;
         djState.decks[deckId].pendingStepIndex = 0;
         djState.decks[deckId].syncedStartTime = 0;
         djState.decks[deckId].visualStartTime = null;
@@ -5540,6 +5709,177 @@
     return file.type.startsWith("audio/") || /\.(wav|wave|mp3|m4a|aac|flac|ogg|opus|webm|aiff?)$/i.test(file.name);
   }
 
+  const MUSICAL_KEY_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+  const MUSICAL_KEY_PROFILES = [
+    [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88],
+    [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17],
+  ];
+
+  function getKeyFromChroma(chroma) {
+    const total = chroma.reduce((sum, value) => sum + value, 0);
+    if (total <= 0) return null;
+    const distribution = chroma.map((value) => value / total);
+    const entropy = -distribution.reduce((sum, value) => sum + (value > 0 ? value * Math.log2(value) : 0), 0);
+    const contrast = Math.max(...chroma) / (total / chroma.length);
+    if (entropy > 3.45 || contrast < 1.7) return null;
+    const mean = total / chroma.length;
+    let best = { score: -Infinity, tonic: 0, mode: 0 };
+    let secondScore = -Infinity;
+    MUSICAL_KEY_PROFILES.forEach((profile, mode) => {
+      for (let tonic = 0; tonic < 12; tonic += 1) {
+        const profileMean = profile.reduce((sum, value) => sum + value, 0) / 12;
+        let numerator = 0;
+        let chromaVariance = 0;
+        let profileVariance = 0;
+        for (let pitch = 0; pitch < 12; pitch += 1) {
+          const observed = chroma[(pitch + tonic) % 12] - mean;
+          const expected = profile[pitch] - profileMean;
+          numerator += observed * expected;
+          chromaVariance += observed * observed;
+          profileVariance += expected * expected;
+        }
+        const score = numerator / Math.sqrt(chromaVariance * profileVariance || 1);
+        if (score > best.score) {
+          secondScore = best.score;
+          best = { score, tonic, mode };
+        } else if (score > secondScore) {
+          secondScore = score;
+        }
+      }
+    });
+    if (best.score < 0.25 || best.score - secondScore < 0.02) return null;
+    return `${MUSICAL_KEY_NAMES[best.tonic]} ${best.mode === 0 ? "major" : "minor"}`;
+  }
+
+  function detectAudioMetadata(buffer) {
+    // Analyze a bounded local window; spectral flux estimates tempo and chroma estimates key.
+    const stride = Math.max(1, Math.floor(buffer.sampleRate / 11025));
+    const sampleRate = buffer.sampleRate / stride;
+    const sampleCount = Math.min(Math.floor(buffer.length / stride), Math.floor(sampleRate * 45));
+    const frameSize = 2048;
+    const hopSize = 256;
+    if (sampleCount < frameSize) return { bpm: null, key: null };
+    const channels = Array.from({ length: buffer.numberOfChannels }, (_, index) => buffer.getChannelData(index));
+    const mono = new Float32Array(sampleCount);
+    for (let index = 0; index < sampleCount; index += 1) {
+      let sample = 0;
+      channels.forEach((channel) => { sample += channel[index * stride] || 0; });
+      mono[index] = sample / channels.length;
+    }
+
+    const cosine = new Float64Array(frameSize / 2);
+    const sine = new Float64Array(frameSize / 2);
+    const reversedIndices = new Uint16Array(frameSize);
+    for (let index = 0; index < frameSize / 2; index += 1) {
+      cosine[index] = Math.cos(2 * Math.PI * index / frameSize);
+      sine[index] = Math.sin(2 * Math.PI * index / frameSize);
+    }
+    for (let index = 0; index < frameSize; index += 1) {
+      let reversed = 0;
+      for (let bit = 1, source = index; bit < frameSize; bit <<= 1, source >>= 1) {
+        reversed = (reversed << 1) | (source & 1);
+      }
+      reversedIndices[index] = reversed;
+    }
+    const window = Float32Array.from({ length: frameSize }, (_, index) =>
+      0.5 - 0.5 * Math.cos(2 * Math.PI * index / (frameSize - 1)));
+    const real = new Float64Array(frameSize);
+    const imaginary = new Float64Array(frameSize);
+    const previousMagnitudes = new Float32Array(frameSize / 2);
+    const chroma = Array(12).fill(0);
+    const onsets = [];
+    const frameRate = sampleRate / hopSize;
+
+    for (let offset = 0; offset + frameSize <= sampleCount; offset += hopSize) {
+      for (let index = 0; index < frameSize; index += 1) {
+        real[reversedIndices[index]] = mono[offset + index] * window[index];
+        imaginary[reversedIndices[index]] = 0;
+      }
+      for (let size = 2; size <= frameSize; size <<= 1) {
+        const halfSize = size >> 1;
+        const tableStep = frameSize / size;
+        for (let start = 0; start < frameSize; start += size) {
+          for (let index = 0; index < halfSize; index += 1) {
+            const tableIndex = index * tableStep;
+            const cosineValue = cosine[tableIndex];
+            const sineValue = -sine[tableIndex];
+            const even = start + index;
+            const odd = even + halfSize;
+            const oddReal = real[odd] * cosineValue - imaginary[odd] * sineValue;
+            const oddImaginary = real[odd] * sineValue + imaginary[odd] * cosineValue;
+            real[odd] = real[even] - oddReal;
+            imaginary[odd] = imaginary[even] - oddImaginary;
+            real[even] += oddReal;
+            imaginary[even] += oddImaginary;
+          }
+        }
+      }
+
+      let spectralFlux = 0;
+      for (let bin = 1; bin < frameSize / 2; bin += 1) {
+        const magnitude = Math.hypot(real[bin], imaginary[bin]);
+        const frequency = bin * frameRate * hopSize / frameSize;
+        if (frequency >= 55 && frequency <= 5000) {
+          const midi = Math.round(69 + 12 * Math.log2(frequency / 440));
+          chroma[(midi % 12 + 12) % 12] += magnitude;
+          spectralFlux += Math.max(0, magnitude - previousMagnitudes[bin]);
+        }
+        previousMagnitudes[bin] = magnitude;
+      }
+      onsets.push(spectralFlux);
+    }
+
+    let bpm = null;
+    if (buffer.duration >= 4 && onsets.length > 12) {
+      const onsetMean = onsets.reduce((sum, value) => sum + value, 0) / onsets.length;
+      const centeredOnsets = onsets.map((value) => value - onsetMean);
+      const minLag = Math.max(2, Math.floor(frameRate * 60 / 200));
+      const maxLag = Math.min(onsets.length - 2, Math.ceil(frameRate * 60 / 60));
+      const correlations = new Map();
+      const totalOnsetEnergy = centeredOnsets.reduce((sum, value) => sum + value * value, 0);
+      const correlationAt = (lag) => {
+        if (lag < minLag || lag > maxLag) return 0;
+        if (correlations.has(lag)) return correlations.get(lag);
+        let product = 0;
+        for (let index = lag; index < centeredOnsets.length; index += 1) {
+          product += centeredOnsets[index] * centeredOnsets[index - lag];
+        }
+        const score = product / (totalOnsetEnergy || 1);
+        correlations.set(lag, score);
+        return score;
+      };
+      let bestLag = 0;
+      let bestScore = -Infinity;
+      for (let lag = minLag; lag <= maxLag; lag += 1) {
+        const score = correlationAt(lag);
+        if (score > bestScore) {
+          bestLag = lag;
+          bestScore = score;
+        }
+      }
+      if (bestLag && bestScore > 0.08) {
+        const leftScore = correlationAt(bestLag - 1);
+        const rightScore = correlationAt(bestLag + 1);
+        const curvature = leftScore - 2 * bestScore + rightScore;
+        const fractionalLag = bestLag + (curvature ? 0.5 * (leftScore - rightScore) / curvature : 0);
+        let detected = 60 * frameRate / fractionalLag;
+        if (detected < 85 && detected * 2 <= 200 &&
+          correlationAt(Math.round(bestLag / 2)) >= bestScore * 0.8) detected *= 2;
+        bpm = Math.round(detected);
+      }
+    }
+    return { bpm, key: getKeyFromChroma(chroma) };
+  }
+
+  function normalizeAudioMetadata(metadata) {
+    return {
+      bpm: Number.isFinite(metadata?.bpm) && metadata.bpm >= 40 && metadata.bpm <= 240
+        ? Math.round(metadata.bpm) : null,
+      key: typeof metadata?.key === "string" && /^[A-G]#? (major|minor)$/.test(metadata.key)
+        ? metadata.key : null,
+    };
+  }
+
   function makeDrumSampleTrack(options) {
     const name = options.name?.trim() || "Imported drum";
     const track = {
@@ -5556,6 +5896,7 @@
       pitch: Number.isFinite(options.pitch) ? Math.max(-12, Math.min(12, options.pitch)) : 0,
       swing: Number.isFinite(options.swing) ? Math.max(0, Math.min(45, options.swing)) : null,
       sample: options.buffer ? { name: options.fileName || name, buffer: options.buffer } : null,
+      audioMetadata: normalizeAudioMetadata(options.audioMetadata),
       gainNode: null,
       effects: makeDefaultEffects(options.effects),
     };
@@ -5605,6 +5946,7 @@
             name: file.name.replace(/\.[^.]+$/, "") || file.name,
             fileName: file.name,
             buffer,
+            audioMetadata: detectAudioMetadata(buffer),
           });
           state.tracks.push(track);
           const pattern = getPattern();
@@ -8656,6 +8998,7 @@
         sourceOffsetSeconds: 0,
         startBar: 0,
         blob: file,
+        audioMetadata: detectAudioMetadata(buffer),
       };
       clip.startBar = clampArrangementStart(startBar, getArrangementClipDuration("audio", clip));
       track.clips.push(clip);
@@ -8874,6 +9217,7 @@
         startBar: clip.startBar,
         durationSeconds: clip.durationSeconds,
         sourceOffsetSeconds: clip.sourceOffsetSeconds || 0,
+        audioMetadata: normalizeAudioMetadata(clip.audioMetadata),
         volume: track.volume,
         muted: track.muted,
         blob: clip.blob,
@@ -8901,6 +9245,7 @@
         pitch: track.pitch || 0,
         swing: Number.isFinite(track.swing) ? track.swing : null,
         cells: track.cells,
+        audioMetadata: normalizeAudioMetadata(track.audioMetadata),
         blob: file,
       });
       transaction.oncomplete = () => { database.close(); resolve(); };
@@ -8966,6 +9311,7 @@
               pitch: record.pitch,
               swing: record.swing,
               cells: record.cells,
+              audioMetadata: record.audioMetadata || detectAudioMetadata(buffer),
               buffer,
             });
             state.tracks.push(track);
@@ -8976,6 +9322,9 @@
             }
           } else {
             track.sample = { name: record.fileName || record.trackName, buffer };
+            track.audioMetadata = record.audioMetadata
+              ? normalizeAudioMetadata(record.audioMetadata)
+              : detectAudioMetadata(buffer);
             ensureSequencerTrackAudio(track);
             if (track.kind === "sample") track.subtitle = "Imported drum sample";
           }
@@ -9018,6 +9367,9 @@
             sourceOffsetSeconds: Number.isFinite(record.sourceOffsetSeconds) ? record.sourceOffsetSeconds : 0,
             buffer,
             blob: record.blob,
+            audioMetadata: record.audioMetadata
+              ? normalizeAudioMetadata(record.audioMetadata)
+              : detectAudioMetadata(buffer),
           });
         } catch {
           showToast(`Could not restore ${record.name}.`);
@@ -9638,6 +9990,7 @@
       const buffer = await state.audioContext.decodeAudioData(bytes);
       const previousBuffer = track.sample?.buffer;
       track.sample = { name: file.name, buffer };
+      track.audioMetadata = detectAudioMetadata(buffer);
       if (!track.sourceId) {
         state.tracks.filter((item) => item.sourceId === track.id && item.sample?.buffer === previousBuffer).forEach((layer) => {
           layer.sample = { ...track.sample };
@@ -9907,6 +10260,7 @@
         variant: track.variant,
         pitch: track.pitch || 0,
         swing: Number.isFinite(track.swing) ? track.swing : null,
+        audioMetadata: normalizeAudioMetadata(track.audioMetadata),
         effects: makeDefaultEffects(track.effects),
         effectSettings: makeDefaultEffectSettings(track.effectSettings),
         effectChain: ensureTrackMixerState(track),
@@ -10232,6 +10586,7 @@
               swing: savedTrack.swing,
               cells: savedTrack.cells,
               effects: savedTrack.effects,
+              audioMetadata: savedTrack.audioMetadata,
             });
             state.tracks.push(track);
           }
@@ -10242,6 +10597,7 @@
           if (Number.isFinite(savedTrack.volume)) track.volume = Math.max(0, Math.min(1, savedTrack.volume));
           if (Number.isFinite(savedTrack.pitch)) track.pitch = Math.max(-12, Math.min(12, savedTrack.pitch));
           if (Number.isFinite(savedTrack.swing)) track.swing = Math.max(0, Math.min(45, savedTrack.swing));
+          if (savedTrack.audioMetadata) track.audioMetadata = normalizeAudioMetadata(savedTrack.audioMetadata);
           track.effects = makeDefaultEffects(savedTrack.effects);
           track.effectSettings = makeDefaultEffectSettings(savedTrack.effectSettings);
           track.effectChain = Array.isArray(savedTrack.effectChain) ? savedTrack.effectChain : undefined;
