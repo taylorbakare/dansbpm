@@ -91,6 +91,9 @@
           <button class="workspace-tab" id="mixer-tab" type="button" role="tab" aria-selected="false" aria-controls="mixer-view">
             Mixer
           </button>
+          <button class="workspace-tab" id="dj-tab" type="button" role="tab" aria-selected="false" aria-controls="dj-view">
+            DJ View
+          </button>
         </div>
 
         <section class="arrangement-workspace" id="arrangement-view" role="tabpanel" aria-labelledby="arrangement-tab">
@@ -307,6 +310,75 @@
                         <button class="quiet-button" id="add-effects-track" type="button">＋ Effects Track</button>
                       </div>
                       <div class="mixer-content" id="mixer-content"></div>
+                    </section>
+                    <section class="dj-view" id="dj-view" role="tabpanel" aria-labelledby="dj-tab" hidden>
+                      <div class="dj-heading">
+                        <div>
+                          <div class="eyebrow">LIVE PERFORMANCE <span class="heading-dot"></span> DJ VIEW</div>
+                          <h1>DJ Decks</h1>
+                          <p class="section-subtitle">Patterns and Mels follow project tempo; imported audio loops at its original rate.</p>
+                        </div>
+                        <div class="dj-crossfader-control">
+                          <label for="dj-crossfader">CROSSFADER</label>
+                          <div class="dj-crossfader-labels"><span>A</span><span>B</span></div>
+                          <input id="dj-crossfader" type="range" min="0" max="100" step="1" value="50" aria-label="DJ crossfader">
+                        </div>
+                      </div>
+                      <div class="dj-decks">
+                        <section class="dj-deck" id="dj-deck-a" data-deck="A">
+                          <div class="dj-deck-heading">
+                            <h2>Deck A</h2>
+                            <button class="quiet-button dj-active-deck" id="dj-focus-a" type="button" aria-pressed="true">Focus A</button>
+                          </div>
+                          <label class="dj-source-control" for="dj-source-a">LIVE SOURCE</label>
+                          <select id="dj-source-a" aria-label="Deck A source"></select>
+                          <div class="dj-deck-transport">
+                            <button class="export-button dj-play" id="dj-play-a" type="button">Play</button>
+                            <button class="quiet-button dj-sync" id="dj-sync-a" type="button">Sync</button>
+                            <button class="quiet-button dj-nudge" data-deck="A" data-direction="-1" type="button" aria-label="Nudge deck A backward">−</button>
+                            <button class="quiet-button dj-nudge" data-deck="A" data-direction="1" type="button" aria-label="Nudge deck A forward">+</button>
+                            <button class="quiet-button dj-add-slot" data-deck="A" type="button">Add to Live Track</button>
+                          </div>
+                          <label class="dj-knob-control" for="dj-volume-a"><span>VOLUME</span><input id="dj-volume-a" type="range" min="0" max="100" value="80" aria-label="Deck A volume"></label>
+                          <label class="dj-knob-control" for="dj-filter-a"><span>FILTER</span><input id="dj-filter-a" type="range" min="200" max="20000" step="100" value="20000" aria-label="Deck A filter"></label>
+                        </section>
+                        <section class="dj-deck" id="dj-deck-b" data-deck="B">
+                          <div class="dj-deck-heading">
+                            <h2>Deck B</h2>
+                            <button class="quiet-button dj-active-deck" id="dj-focus-b" type="button" aria-pressed="false">Focus B</button>
+                          </div>
+                          <label class="dj-source-control" for="dj-source-b">LIVE SOURCE</label>
+                          <select id="dj-source-b" aria-label="Deck B source"></select>
+                          <div class="dj-deck-transport">
+                            <button class="export-button dj-play" id="dj-play-b" type="button">Play</button>
+                            <button class="quiet-button dj-sync" id="dj-sync-b" type="button">Sync</button>
+                            <button class="quiet-button dj-nudge" data-deck="B" data-direction="-1" type="button" aria-label="Nudge deck B backward">−</button>
+                            <button class="quiet-button dj-nudge" data-deck="B" data-direction="1" type="button" aria-label="Nudge deck B forward">+</button>
+                            <button class="quiet-button dj-add-slot" data-deck="B" type="button">Add to Live Track</button>
+                          </div>
+                          <label class="dj-knob-control" for="dj-volume-b"><span>VOLUME</span><input id="dj-volume-b" type="range" min="0" max="100" value="80" aria-label="Deck B volume"></label>
+                          <label class="dj-knob-control" for="dj-filter-b"><span>FILTER</span><input id="dj-filter-b" type="range" min="200" max="20000" step="100" value="20000" aria-label="Deck B filter"></label>
+                        </section>
+                      </div>
+                      <section class="dj-live-track" aria-labelledby="dj-live-track-title">
+                        <div class="dj-section-heading">
+                          <div>
+                            <h2 id="dj-live-track-title">Live Track</h2>
+                            <p>Save up to eight pattern, Mel, or audio cues for instant deck loading.</p>
+                          </div>
+                        </div>
+                        <div class="dj-live-slots" id="dj-live-slots"></div>
+                      </section>
+                      <section class="dj-pads" aria-labelledby="dj-pads-title">
+                        <div class="dj-section-heading">
+                          <div>
+                            <h2 id="dj-pads-title">Drum Pads</h2>
+                            <p>Trigger the drum kit on the selected deck's live pattern.</p>
+                          </div>
+                        </div>
+                        <div class="dj-pad-grid" id="dj-pad-grid"></div>
+                      </section>
+                      <p class="dj-controls-hint">Keyboard: QWER / ASDF / ZXCV / 1234 pads · Space play/pause · [ / ] focus deck · Y sync · , / . nudge · ← / → crossfader · F1–F8 live slots · L add source</p>
                     </section>
                   </div>
                 </section>

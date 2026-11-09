@@ -3377,6 +3377,544 @@
     return getStepDuration();
   }
 
+  const DJ_DECK_IDS = ["A", "B"];
+  const DJ_PAD_KEYS = ["KeyQ", "KeyW", "KeyE", "KeyR", "KeyA", "KeyS", "KeyD", "KeyF",
+    "KeyZ", "KeyX", "KeyC", "KeyV", "Digit1", "Digit2", "Digit3", "Digit4"];
+  const DJ_PAD_NOTES = [36, 39, 42, 46, 37, 38, 40, 44, 41, 43, 45, 47, 48, 50, 49, 51];
+  const DJ_PAD_NAMES = ["Kick", "Clap", "Closed hat", "Open hat", "Rim", "Snare", "Snare 2", "Pedal hat",
+    "Low tom", "Mid tom", "High tom", "Low tom 2", "Tom", "Tom 2", "Crash", "Ride"];
+  const djState = {
+    activeDeck: "A",
+    crossfader: 50,
+    liveSlots: Array(8).fill(null),
+    decks: {
+      A: { sourceKey: "", volume: 0.8, filter: 20000, playing: false, timerId: null, audioSource: null, filterNode: null, gainNode: null, nextStepTime: 0, stepIndex: 0 },
+      B: { sourceKey: "", volume: 0.8, filter: 20000, playing: false, timerId: null, audioSource: null, filterNode: null, gainNode: null, nextStepTime: 0, stepIndex: 0 },
+    },
+  };
+
+  function getDjStorageKey() {
+    return `${getProjectStorageKey(state.projectId)}:dj`;
+  }
+
+  function saveDjState() {
+    try {
+      const saved = {
+        activeDeck: djState.activeDeck,
+        crossfader: djState.crossfader,
+        liveSlots: djState.liveSlots,
+        decks: Object.fromEntries(DJ_DECK_IDS.map((deckId) => {
+          const deck = djState.decks[deckId];
+          return [deckId, { sourceKey: deck.sourceKey, volume: deck.volume, filter: deck.filter }];
+        })),
+      };
+      window.localStorage.setItem(getDjStorageKey(), JSON.stringify(saved));
+    } catch (error) {
+      showToast(`Could not save DJ set: ${error.message || "browser storage is unavailable"}`);
+    }
+  }
+
+  function restoreDjState() {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(getDjStorageKey()) || "null");
+      if (!saved || typeof saved !== "object") return;
+      if (saved.activeDeck === "A" || saved.activeDeck === "B") djState.activeDeck = saved.activeDeck;
+      if (Number.isFinite(saved.crossfader)) djState.crossfader = Math.max(0, Math.min(100, saved.crossfader));
+      if (Array.isArray(saved.liveSlots)) {
+        djState.liveSlots = Array.from({ length: 8 }, (_, index) => {
+          const slot = saved.liveSlots[index];
+          return typeof slot?.sourceKey === "string" && typeof slot?.name === "string"
+            ? { sourceKey: slot.sourceKey, name: slot.name }
+            : null;
+        });
+      }
+      DJ_DECK_IDS.forEach((deckId) => {
+        const savedDeck = saved.decks?.[deckId];
+        if (!savedDeck || typeof savedDeck !== "object") return;
+        const deck = djState.decks[deckId];
+        if (typeof savedDeck.sourceKey === "string") deck.sourceKey = savedDeck.sourceKey;
+        if (Number.isFinite(savedDeck.volume)) deck.volume = Math.max(0, Math.min(1, savedDeck.volume));
+        if (Number.isFinite(savedDeck.filter)) deck.filter = Math.max(200, Math.min(20000, savedDeck.filter));
+      });
+    } catch (error) {
+      showToast(`Could not restore DJ set: ${error.message || "saved data is unavailable"}`);
+    }
+  }
+
+  function getDjSource(sourceKey) {
+    if (typeof sourceKey !== "string" || !sourceKey) return null;
+    const separator = sourceKey.indexOf(":");
+    if (separator < 0) return null;
+    const type = sourceKey.slice(0, separator);
+    const id = sourceKey.slice(separator + 1);
+    if (type === "pattern") {
+      const pattern = getPattern(id);
+      return pattern ? { type, id, name: pattern.name, item: pattern } : null;
+    }
+    if (type === "mel") {
+      const mel = getMel(id);
+      return mel ? { type, id, name: mel.name, item: mel } : null;
+    }
+    if (type === "audio") {
+      const track = state.arrangementTracks.find((item) => item.id === id);
+      return track ? { type, id, name: track.name, item: track } : null;
+    }
+    return null;
+  }
+
+  function getDjCycleTicks(source) {
+    if (source?.type === "pattern") return Math.max(1, (source.item.steps || 16) * 2);
+    if (source?.type === "mel") return Math.max(1, Math.round(getMelLengthBars(source.item) * PIANO_TICKS_PER_BAR));
+    return 0;
+  }
+
+  function getDjSourceOptions() {
+    return [
+      { label: "Patterns", items: (state.patterns || []).map((item) => ({ key: `pattern:${item.id}`, name: item.name })) },
+      { label: "Mels", items: (state.mels || []).map((item) => ({ key: `mel:${item.id}`, name: item.name })) },
+      { label: "Imported audio", items: state.arrangementTracks.filter((item) => item.clips.length)
+        .map((item) => ({ key: `audio:${item.id}`, name: item.name })) },
+    ];
+  }
+
+  function renderDjView() {
+    const groups = getDjSourceOptions();
+    DJ_DECK_IDS.forEach((deckId) => {
+      const deck = djState.decks[deckId];
+      const suffix = deckId.toLowerCase();
+      const select = $(`#dj-source-${suffix}`);
+      select.replaceChildren();
+      const placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = "Choose a pattern, Mel, or audio track";
+      select.append(placeholder);
+      groups.forEach((group) => {
+        if (!group.items.length) return;
+        const optionGroup = document.createElement("optgroup");
+        optionGroup.label = group.label;
+        group.items.forEach((item) => {
+          const option = document.createElement("option");
+          option.value = item.key;
+          option.textContent = item.name;
+          optionGroup.append(option);
+        });
+        select.append(optionGroup);
+      });
+      select.value = deck.sourceKey;
+      if (select.value !== deck.sourceKey) deck.sourceKey = "";
+      $(`#dj-volume-${suffix}`).value = String(Math.round(deck.volume * 100));
+      $(`#dj-filter-${suffix}`).value = String(deck.filter);
+      updateDjDeckUI(deckId);
+    });
+    $("#dj-crossfader").value = String(djState.crossfader);
+
+    const slots = $("#dj-live-slots");
+    slots.replaceChildren();
+    djState.liveSlots.forEach((slot, index) => {
+      const wrapper = document.createElement("div");
+      wrapper.className = "dj-live-slot-wrap";
+      const trigger = document.createElement("button");
+      trigger.className = `dj-live-slot${slot ? " is-filled" : ""}`;
+      trigger.type = "button";
+      trigger.dataset.slot = String(index);
+      trigger.title = slot ? `Load ${slot.name} to the active deck` : "Empty live slot";
+      const key = document.createElement("strong");
+      key.textContent = `F${index + 1}`;
+      const name = document.createElement("span");
+      name.textContent = slot?.name || "Empty";
+      trigger.append(key, name);
+      wrapper.append(trigger);
+      if (slot) {
+        const clear = document.createElement("button");
+        clear.className = "dj-live-slot-clear";
+        clear.type = "button";
+        clear.dataset.clearSlot = String(index);
+        clear.setAttribute("aria-label", `Clear live slot ${index + 1}`);
+        clear.textContent = "×";
+        wrapper.append(clear);
+      }
+      slots.append(wrapper);
+    });
+
+    const padGrid = $("#dj-pad-grid");
+    padGrid.replaceChildren();
+    DJ_PAD_NAMES.forEach((name, index) => {
+      const pad = document.createElement("button");
+      pad.className = "dj-pad";
+      pad.type = "button";
+      pad.dataset.pad = String(index);
+      pad.setAttribute("aria-label", `Drum pad ${index + 1}: ${name}`);
+      pad.append(document.createTextNode(name));
+      const key = document.createElement("kbd");
+      key.textContent = DJ_PAD_KEYS[index].replace(/^Key/, "").replace(/^Digit/, "");
+      pad.append(key);
+      padGrid.append(pad);
+    });
+    applyDjMixer();
+  }
+
+  function updateDjDeckUI(deckId) {
+    const deck = djState.decks[deckId];
+    const suffix = deckId.toLowerCase();
+    $(`#dj-deck-${suffix}`).classList.toggle("is-active", djState.activeDeck === deckId);
+    $(`#dj-focus-${suffix}`).setAttribute("aria-pressed", String(djState.activeDeck === deckId));
+    const playButton = $(`#dj-play-${suffix}`);
+    playButton.textContent = deck.playing ? "Pause" : "Play";
+    playButton.classList.toggle("is-playing", deck.playing);
+    playButton.setAttribute("aria-pressed", String(deck.playing));
+  }
+
+  function setActiveDjDeck(deckId) {
+    if (!DJ_DECK_IDS.includes(deckId)) return;
+    djState.activeDeck = deckId;
+    DJ_DECK_IDS.forEach(updateDjDeckUI);
+    saveDjState();
+  }
+
+  function ensureDjDeckAudio(deck) {
+    if (!deck.filterNode) {
+      deck.filterNode = state.audioContext.createBiquadFilter();
+      deck.filterNode.type = "lowpass";
+      deck.gainNode = state.audioContext.createGain();
+      deck.filterNode.connect(deck.gainNode);
+      deck.gainNode.connect(state.masterGain);
+    }
+    applyDjMixer();
+  }
+
+  function applyDjMixer() {
+    if (!state.audioContext || !state.masterGain) return;
+    const crossfader = djState.crossfader / 100;
+    const gains = [Math.cos(crossfader * Math.PI / 2), Math.sin(crossfader * Math.PI / 2)];
+    DJ_DECK_IDS.forEach((deckId, index) => {
+      const deck = djState.decks[deckId];
+      if (!deck.filterNode || !deck.gainNode) return;
+      deck.filterNode.frequency.setTargetAtTime(deck.filter, state.audioContext.currentTime, 0.015);
+      deck.gainNode.gain.setTargetAtTime(deck.volume * gains[index], state.audioContext.currentTime, 0.015);
+    });
+  }
+
+  function stopDjDeck(deckId) {
+    const deck = djState.decks[deckId];
+    if (deck.timerId !== null) window.clearInterval(deck.timerId);
+    deck.timerId = null;
+    if (deck.nudgeTimer !== null) window.clearTimeout(deck.nudgeTimer);
+    deck.nudgeTimer = null;
+    if (deck.audioSource) {
+      deck.audioSource.onended = null;
+      deck.audioSource.stop();
+      deck.audioSource.disconnect();
+    }
+    deck.audioSource = null;
+    deck.playing = false;
+    updateDjDeckUI(deckId);
+  }
+
+  async function startDjDeck(deckId) {
+    const deck = djState.decks[deckId];
+    const source = getDjSource(deck.sourceKey);
+    if (!source) {
+      showToast("Choose a live source for this deck first.");
+      return;
+    }
+    try {
+      await ensureAudio();
+      ensureDjDeckAudio(deck);
+      const startTime = Math.max(state.audioContext.currentTime + 0.04, deck.syncedStartTime || 0);
+      deck.syncedStartTime = 0;
+      deck.nextStepTime = startTime;
+      deck.playing = true;
+      if (source.type === "audio") {
+        const clip = source.item.clips.find((item) => item.buffer);
+        if (!clip) {
+          deck.playing = false;
+          showToast("This audio track has no available decoded clip.");
+          updateDjDeckUI(deckId);
+          return;
+        }
+        const offset = Math.max(0, clip.sourceOffsetSeconds || 0);
+        const loopEnd = Math.min(clip.buffer.duration, offset + (clip.durationSeconds ?? clip.buffer.duration));
+        if (loopEnd <= offset) {
+          deck.playing = false;
+          showToast("This audio clip has no playable duration.");
+          updateDjDeckUI(deckId);
+          return;
+        }
+        const player = state.audioContext.createBufferSource();
+        player.buffer = clip.buffer;
+        player.loop = true;
+        player.loopStart = offset;
+        player.loopEnd = loopEnd;
+        player.connect(deck.filterNode);
+        player.onended = () => {
+          if (deck.audioSource === player) deck.audioSource = null;
+        };
+        player.start(startTime, offset);
+        deck.audioSource = player;
+      } else {
+        deck.stepIndex = Number.isFinite(deck.pendingStepIndex) ? deck.pendingStepIndex : 0;
+        deck.pendingStepIndex = undefined;
+        deck.timerId = window.setInterval(() => {
+          try {
+            scheduleDjDeck(deckId);
+          } catch (error) {
+            stopDjDeck(deckId);
+            showToast(error.message || "DJ deck playback stopped unexpectedly.");
+          }
+        }, 25);
+        scheduleDjDeck(deckId);
+      }
+      updateDjDeckUI(deckId);
+    } catch (error) {
+      stopDjDeck(deckId);
+      showToast(error.message || "DJ deck audio could not start.");
+    }
+  }
+
+  function toggleDjDeck(deckId) {
+    if (djState.decks[deckId].playing) stopDjDeck(deckId);
+    else startDjDeck(deckId);
+  }
+
+  function scheduleDjDeck(deckId) {
+    const deck = djState.decks[deckId];
+    if (!deck.playing || !state.audioContext) return;
+    const source = getDjSource(deck.sourceKey);
+    if (!source || source.type === "audio") return;
+    const now = state.audioContext.currentTime;
+    while (deck.nextStepTime < now + 0.12) {
+      const clockStep = deck.stepIndex;
+      if (source.type === "pattern") {
+        const pattern = source.item;
+        getGridEventsForTick(pattern, clockStep).forEach(({ step, tickOffset }) => {
+          const eventTime = deck.nextStepTime + tickOffset * getSchedulerTickDuration();
+          const eventStep = step % getGridStepCount(pattern);
+          const hasSolo = state.tracks.some((track) => track.solo);
+          getPatternTrackIds(pattern).forEach((trackId) => {
+            const track = state.tracks.find((item) => item.id === trackId);
+            if (!track || !pattern.cells?.[trackId]?.[eventStep] ||
+              track.muted || (hasSolo && !track.solo) ||
+              Array.isArray(pattern.stepPianoNotes?.[trackId])) return;
+            const variant = pattern.variants?.[trackId] || "classic";
+            triggerTrack(track, getTrackStepTime(track, eventStep, pattern, eventTime),
+              eventStep, variant, getNoteDuration(pattern), track, deck.filterNode);
+          });
+        });
+        Object.entries(source.item.stepPianoNotes || {}).forEach(([trackId, notes]) => {
+          const track = state.tracks.find((item) => item.id === trackId);
+          if (!track || !Array.isArray(notes)) return;
+          notes.filter((note) => Math.floor(note.startTick) === clockStep).forEach((note) => {
+            playPianoNote(track, deck.nextStepTime, note.midi,
+              note.durationTicks * getSchedulerTickDuration(), note.velocity ?? 0.8,
+              track, deck.filterNode, note);
+          });
+        });
+      } else {
+        const mel = source.item;
+        const instrument = getPianoTrack(mel.instrumentId);
+        const loopTicks = Math.max(1, Math.round(getMelLengthBars(mel) * PIANO_TICKS_PER_BAR));
+        if (instrument) {
+          mel.notes.filter((note) => Math.floor(note.startTick) === clockStep).forEach((note) => {
+            playPianoNote(instrument, deck.nextStepTime, note.midi,
+              note.durationTicks * getSchedulerTickDuration(), note.velocity ?? 0.8,
+              instrument, deck.filterNode, note);
+          });
+        }
+        deck.stepIndex = (clockStep + 1) % loopTicks;
+      }
+      if (source.type === "pattern") {
+        const cycleTicks = Math.max(1, (source.item.steps || 16) * 2);
+        deck.stepIndex = (clockStep + 1) % cycleTicks;
+      }
+      deck.nextStepTime += getSchedulerTickDuration();
+    }
+  }
+
+  function syncDjDeck(deckId) {
+    const deck = djState.decks[deckId];
+    const other = djState.decks[deckId === "A" ? "B" : "A"];
+    const deckCycleTicks = getDjCycleTicks(getDjSource(deck.sourceKey));
+    const otherCycleTicks = getDjCycleTicks(getDjSource(other.sourceKey));
+    const now = state.audioContext?.currentTime || 0;
+    const beatDuration = 60 / state.bpm;
+    const startTime = other.playing && other.timerId !== null
+      ? Math.max(now + 0.04, other.nextStepTime)
+      : Math.ceil((now + 0.02) / beatDuration) * beatDuration;
+    deck.pendingStepIndex = other.playing && deckCycleTicks && otherCycleTicks
+      ? Math.floor((other.stepIndex % otherCycleTicks) / otherCycleTicks * deckCycleTicks)
+      : 0;
+    deck.syncedStartTime = startTime;
+    if (deck.playing) {
+      const source = getDjSource(deck.sourceKey);
+      if (source?.type === "audio") {
+        stopDjDeck(deckId);
+        startDjDeck(deckId);
+      } else {
+        deck.nextStepTime = startTime;
+        deck.stepIndex = deck.pendingStepIndex;
+      }
+    }
+    showToast(`Deck ${deckId} synced${other.playing ? ` to Deck ${deckId === "A" ? "B" : "A"}` : " to the next beat"}.`);
+  }
+
+  function nudgeDjDeck(deckId, direction) {
+    const deck = djState.decks[deckId];
+    if (deck.audioSource && state.audioContext) {
+      deck.audioSource.playbackRate.setTargetAtTime(direction > 0 ? 1.02 : 0.98, state.audioContext.currentTime, 0.01);
+      if (deck.nudgeTimer !== null) window.clearTimeout(deck.nudgeTimer);
+      deck.nudgeTimer = window.setTimeout(() => {
+        if (deck.audioSource && state.audioContext) {
+          deck.audioSource.playbackRate.setTargetAtTime(1, state.audioContext.currentTime, 0.04);
+        }
+        deck.nudgeTimer = null;
+      }, 250);
+    } else if (deck.timerId !== null) {
+      deck.nextStepTime -= direction * getSchedulerTickDuration();
+    }
+  }
+
+  function addDjLiveSlot(deckId) {
+    const source = getDjSource(djState.decks[deckId].sourceKey);
+    if (!source) {
+      showToast("Choose a live source before adding it to the Live Track.");
+      return;
+    }
+    const index = djState.liveSlots.findIndex((slot) => !slot);
+    if (index < 0) {
+      showToast("All Live Track slots are full.");
+      return;
+    }
+    djState.liveSlots[index] = { sourceKey: djState.decks[deckId].sourceKey, name: source.name };
+    saveDjState();
+    renderDjView();
+  }
+
+  function loadDjLiveSlot(index) {
+    const slot = djState.liveSlots[index];
+    if (!slot) return;
+    const deckId = djState.activeDeck;
+    stopDjDeck(deckId);
+    djState.decks[deckId].sourceKey = slot.sourceKey;
+    saveDjState();
+    renderDjView();
+    startDjDeck(deckId);
+  }
+
+  async function playDjPad(index) {
+    try {
+      await ensureAudio();
+      const deck = djState.decks[djState.activeDeck];
+      ensureDjDeckAudio(deck);
+      const source = getDjSource(deck.sourceKey);
+      const patternTrackIds = source?.type === "pattern" ? getPatternTrackIds(source.item) : [];
+      const track = state.tracks.find((item) => patternTrackIds.includes(item.id) && item.kind === "drumkit") ||
+        state.tracks.find((item) => item.kind === "drumkit");
+      if (!track) {
+        showToast("Add a drum-kit instrument track to use the DJ pads.");
+        return;
+      }
+      playPianoNote(track, state.audioContext.currentTime + 0.01, DJ_PAD_NOTES[index],
+        getStepDuration(), 0.85, track, deck.filterNode);
+    } catch (error) {
+      showToast(error.message || "DJ drum pad could not play.");
+    }
+  }
+
+  function handleDjKeydown(event) {
+    if (state.view !== "dj" || state.workspaceHidden || event.ctrlKey || event.altKey || event.metaKey) return;
+    if (event.target instanceof Element && event.target.closest("input, select, textarea, [contenteditable='true']")) return;
+    const padIndex = DJ_PAD_KEYS.indexOf(event.code);
+    const slotIndex = /^F[1-8]$/.test(event.code) ? Number(event.code.slice(1)) - 1 : -1;
+    let handled = true;
+    if (padIndex >= 0) {
+      if (!event.repeat) playDjPad(padIndex);
+    } else if (slotIndex >= 0) {
+      if (!event.repeat) loadDjLiveSlot(slotIndex);
+    } else if (event.code === "Space") {
+      if (!event.repeat) toggleDjDeck(djState.activeDeck);
+    } else if (event.code === "BracketLeft") {
+      setActiveDjDeck("A");
+    } else if (event.code === "BracketRight") {
+      setActiveDjDeck("B");
+    } else if (event.code === "KeyY") {
+      if (!event.repeat) syncDjDeck(djState.activeDeck);
+    } else if (event.code === "Comma") {
+      nudgeDjDeck(djState.activeDeck, -1);
+    } else if (event.code === "Period") {
+      nudgeDjDeck(djState.activeDeck, 1);
+    } else if (event.code === "ArrowLeft" || event.code === "ArrowRight") {
+      djState.crossfader = Math.max(0, Math.min(100, djState.crossfader + (event.code === "ArrowLeft" ? -3 : 3)));
+      $("#dj-crossfader").value = String(djState.crossfader);
+      applyDjMixer();
+      saveDjState();
+    } else if (event.code === "KeyL") {
+      if (!event.repeat) addDjLiveSlot(djState.activeDeck);
+    } else {
+      handled = false;
+    }
+    if (handled) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }
+
+  function bindDjEvents() {
+    DJ_DECK_IDS.forEach((deckId) => {
+      const suffix = deckId.toLowerCase();
+      $(`#dj-deck-${suffix}`).addEventListener("click", () => setActiveDjDeck(deckId));
+      $(`#dj-source-${suffix}`).addEventListener("change", (event) => {
+        stopDjDeck(deckId);
+        djState.decks[deckId].sourceKey = event.target.value;
+        djState.decks[deckId].pendingStepIndex = 0;
+        djState.decks[deckId].syncedStartTime = 0;
+        setActiveDjDeck(deckId);
+      });
+      $(`#dj-play-${suffix}`).addEventListener("click", () => {
+        setActiveDjDeck(deckId);
+        toggleDjDeck(deckId);
+      });
+      $(`#dj-sync-${suffix}`).addEventListener("click", () => syncDjDeck(deckId));
+      $(`#dj-focus-${suffix}`).addEventListener("click", () => setActiveDjDeck(deckId));
+      $(`#dj-volume-${suffix}`).addEventListener("input", (event) => {
+        djState.decks[deckId].volume = Number(event.target.value) / 100;
+        applyDjMixer();
+      });
+      $(`#dj-volume-${suffix}`).addEventListener("change", saveDjState);
+      $(`#dj-filter-${suffix}`).addEventListener("input", (event) => {
+        djState.decks[deckId].filter = Number(event.target.value);
+        applyDjMixer();
+      });
+      $(`#dj-filter-${suffix}`).addEventListener("change", saveDjState);
+    });
+    document.querySelectorAll(".dj-nudge").forEach((button) => {
+      button.addEventListener("click", () => nudgeDjDeck(button.dataset.deck, Number(button.dataset.direction)));
+    });
+    document.querySelectorAll(".dj-add-slot").forEach((button) => {
+      button.addEventListener("click", () => addDjLiveSlot(button.dataset.deck));
+    });
+    $("#dj-crossfader").addEventListener("input", (event) => {
+      djState.crossfader = Number(event.target.value);
+      applyDjMixer();
+    });
+    $("#dj-crossfader").addEventListener("change", saveDjState);
+    $("#dj-live-slots").addEventListener("click", (event) => {
+      const clearButton = event.target.closest("[data-clear-slot]");
+      if (clearButton) {
+        djState.liveSlots[Number(clearButton.dataset.clearSlot)] = null;
+        saveDjState();
+        renderDjView();
+        return;
+      }
+      const slotButton = event.target.closest("[data-slot]");
+      if (slotButton) loadDjLiveSlot(Number(slotButton.dataset.slot));
+    });
+    $("#dj-pad-grid").addEventListener("click", (event) => {
+      const pad = event.target.closest("[data-pad]");
+      if (pad) playDjPad(Number(pad.dataset.pad));
+    });
+    document.addEventListener("keydown", handleDjKeydown, true);
+  }
+
   function getTrackStepTime(track, step, pattern, time) {
     const ticksPerStep = getGridTicksPerStep(pattern);
     const isSwingStep = ticksPerStep === 1
@@ -6796,6 +7334,7 @@
     const showSequencer = view === "sequencer";
     const showPianoRoll = view === "piano-roll";
     const showMixer = view === "mixer";
+    const showDJ = view === "dj";
     const patternDragSource = $("#pattern-drag-source");
     const addPatternButton = $("#add-pattern-button");
     if (showSequencer) {
@@ -6805,12 +7344,14 @@
       arrangementActions.insertBefore(patternDragSource, $("#new-pattern-button"));
       arrangementActions.insertBefore(addPatternButton, $("#record-audio-button"));
     }
-    $("#arrangement-heading").hidden = showSequencer || showPianoRoll;
+    $("#arrangement-heading").hidden = showSequencer || showPianoRoll || showDJ;
     $("#arrangement-view").hidden = false;
     document.body.classList.toggle("is-beat-grid-open", showSequencer);
     $("#sequencer-view").hidden = !showSequencer;
     $("#piano-roll-view").hidden = !showPianoRoll;
     $("#mixer-view").hidden = !showMixer;
+    $("#dj-view").hidden = !showDJ;
+    if (showDJ) renderDjView();
     $("#sequencer-tab").classList.toggle("is-selected", showSequencer);
     $("#sequencer-tab").setAttribute("aria-selected", String(showSequencer));
     $("#arrangement-tab").classList.toggle("is-selected", view === "arrangement");
@@ -6818,6 +7359,8 @@
     $("#piano-roll-tab").classList.toggle("is-selected", showPianoRoll);
     $("#piano-roll-tab").setAttribute("aria-selected", String(showPianoRoll));
     $("#mixer-tab").classList.toggle("is-selected", showMixer);
+    $("#dj-tab").classList.toggle("is-selected", showDJ);
+    $("#dj-tab").setAttribute("aria-selected", String(showDJ));
     $("#mixer-tab").setAttribute("aria-selected", String(showMixer));
     document.querySelectorAll(".workspace-open-button").forEach((button) => {
       button.classList.toggle("is-active", (button.id === "open-beat-grid-button" && showSequencer) || (button.id === "open-piano-roll-button" && showPianoRoll));
@@ -6869,6 +7412,7 @@
       track.clips.sort((left, right) => left.startBar - right.startBar);
       updateArrangementLength();
       renderArrangement();
+      if (state.view === "dj") renderDjView();
       saveState();
       try {
         await persistClip(track, clip);
@@ -8402,7 +8946,7 @@
       if (typeof saved.workspaceHidden === "boolean") state.workspaceHidden = saved.workspaceHidden;
       if (typeof saved.trackViewHidden === "boolean") state.trackViewHidden = saved.trackViewHidden;
       if (state.workspaceHidden && state.trackViewHidden) state.trackViewHidden = false;
-      if (["sequencer", "arrangement", "piano-roll", "mixer"].includes(saved.view)) state.view = saved.view;
+      if (["sequencer", "arrangement", "piano-roll", "mixer", "dj"].includes(saved.view)) state.view = saved.view;
       if (saved.selectedPreset === null) state.selectedPreset = null;
       else if (PRESETS.some((preset) => preset.id === saved.selectedPreset)) state.selectedPreset = saved.selectedPreset;
       if (Array.isArray(saved.tracks)) {
@@ -9029,6 +9573,8 @@
       setWorkspaceView("sequencer");
     });
     $("#mixer-tab").addEventListener("click", () => setWorkspaceView("mixer"));
+    $("#dj-tab").addEventListener("click", () => setWorkspaceView("dj"));
+    bindDjEvents();
     $("#add-effects-track").addEventListener("click", createEffectTrack);
     $("#hide-workspace-button").addEventListener("click", () => setViewVisibility(true, false));
     $("#show-workspace-button").addEventListener("click", () => setViewVisibility(false, false));
@@ -9578,6 +10124,7 @@
     state.selectedPatternId = initialPattern.id;
     initializeProjects();
     if (state.currentUser) restoreState();
+    restoreDjState();
     restoreDansBpmSynthPatch();
     ensureMels();
     tempoValue.textContent = String(state.bpm);
@@ -9599,7 +10146,7 @@
 
   initialize();
   if (state.currentUser) {
-    restoreArrangement();
+    restoreArrangement().then(renderDjView);
     try {
       if (window.sessionStorage.getItem(OPEN_PROJECTS_KEY) === "true") {
         window.sessionStorage.removeItem(OPEN_PROJECTS_KEY);
