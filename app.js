@@ -259,6 +259,16 @@
   }
   const LIVE_SAMPLE_TRACKS = [
     ...makeLiveSampleTracks("Live Drums", "Kicks", "#d4f16c", [
+      ["virtuosity-kick-dry-soft", "Virtuosity Kick · Soft · Snare Off", "virtuosity/oh_kick_snoff_vl1_rr1.ogg", 36],
+      ["virtuosity-kick-dry-medium", "Virtuosity Kick · Medium · Snare Off", "virtuosity/oh_kick_snoff_vl2_rr1.ogg", 36],
+      ["virtuosity-kick-dry-strong", "Virtuosity Kick · Strong · Snare Off", "virtuosity/oh_kick_snoff_vl3_rr1.ogg", 36],
+      ["virtuosity-kick-dry-hard", "Virtuosity Kick · Hard · Snare Off", "virtuosity/oh_kick_snoff_vl4_rr1.ogg", 36],
+      ["virtuosity-kick-bleed-soft", "Virtuosity Kick · Soft · Snare Bleed", "virtuosity/oh_kick_snon_vl1_rr1.ogg", 36],
+      ["virtuosity-kick-bleed-medium", "Virtuosity Kick · Medium · Snare Bleed", "virtuosity/oh_kick_snon_vl2_rr1.ogg", 36],
+      ["virtuosity-kick-bleed-strong", "Virtuosity Kick · Strong · Snare Bleed", "virtuosity/oh_kick_snon_vl3_rr1.ogg", 36],
+      ["virtuosity-kick-bleed-hard", "Virtuosity Kick · Hard · Snare Bleed", "virtuosity/oh_kick_snon_vl4_rr1.ogg", 36],
+    ]),
+    ...makeLiveSampleTracks("Live Drums", "Kicks", "#d4f16c", [
       ["double-kick-1", "Live Double Kick Take 1", "double_kick1.mp3", 36],
       ["double-kick-2", "Live Double Kick Take 2", "double_kick2.mp3", 36],
     ]),
@@ -4728,11 +4738,119 @@
     draw();
   }
 
-  function renderInstrumentBrowser() {
+  function getInstrumentCategory(track) {
+    if (track.sampleCategory) return track.sampleCategory;
+    const labels = {
+      kick: "Kicks",
+      snare: "Snares",
+      clap: "Claps",
+      hat: "Closed Hi-Hats",
+      openhat: "Open Hi-Hats",
+      rim: "Rims & Percussion",
+    };
+    return labels[track.kind] || (track.family === "Live Drums" ? "Other Drums" : "");
+  }
+
+  function normalizeSoundSearch(value) {
+    return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  }
+
+  function matchesInstrumentSearch(track, query) {
+    const terms = normalizeSoundSearch(query).split(/\s+/).filter(Boolean);
+    if (!terms.length) return true;
+    const searchable = normalizeSoundSearch([
+      track.name,
+      track.family,
+      getInstrumentCategory(track),
+      track.kind,
+      track.subtitle,
+      track.id,
+      track.sampleUrl,
+      track.searchTerms,
+      getInstrumentCategory(track) === "Kicks" ? "kick kicks kick drum bass drum acoustic live" : "",
+      track.sampleOneShot ? "one shot" : "",
+    ].filter(Boolean).join(" "));
+    return terms.every((term) => searchable.includes(term));
+  }
+
+  function renderSoundSearchSuggestions(query) {
+    const results = $("#topbar-sound-search-results");
+    results.replaceChildren();
+    const normalizedQuery = normalizeSoundSearch(query);
+    const input = $("#topbar-sound-search-input");
+    if (!normalizedQuery) {
+      results.hidden = true;
+      input.setAttribute("aria-expanded", "false");
+      return;
+    }
+
+    const instruments = state.tracks.filter((track) => !track.sourceId);
+    const categories = [...new Set(instruments.flatMap((track) =>
+      [track.family, getInstrumentCategory(track)].filter(Boolean)))];
+    const matchingCategories = categories.filter((category) => {
+      const text = normalizeSoundSearch(category);
+      return normalizedQuery.split(" ").every((term) => text.includes(term));
+    }).slice(0, 4);
+    const matchingInstruments = instruments.filter((track) => matchesInstrumentSearch(track, query)).slice(0, 7);
+    const addHeading = (text) => {
+      const heading = document.createElement("div");
+      heading.className = "topbar-search-heading";
+      heading.textContent = text;
+      results.append(heading);
+    };
+    const addResult = (title, detail, searchQuery) => {
+      const button = document.createElement("button");
+      button.className = "topbar-search-result";
+      button.type = "button";
+      button.dataset.searchQuery = searchQuery;
+      button.setAttribute("role", "option");
+      const name = document.createElement("span");
+      name.className = "topbar-search-result-name";
+      name.textContent = title;
+      const description = document.createElement("span");
+      description.className = "topbar-search-result-detail";
+      description.textContent = detail;
+      button.append(name, description);
+      results.append(button);
+    };
+
+    if (matchingCategories.length) {
+      addHeading("CATEGORIES");
+      matchingCategories.forEach((category) => {
+        const count = instruments.filter((track) =>
+          track.family === category || getInstrumentCategory(track) === category).length;
+        addResult(category, `${count} sound${count === 1 ? "" : "s"}`, category);
+      });
+    }
+    if (matchingInstruments.length) {
+      addHeading("SOUNDS");
+      matchingInstruments.forEach((track) => {
+        addResult(track.name, [track.family, getInstrumentCategory(track)].filter(Boolean).join(" · "), track.name);
+      });
+    }
+    if (!matchingCategories.length && !matchingInstruments.length) {
+      const empty = document.createElement("div");
+      empty.className = "topbar-search-empty";
+      empty.textContent = "No matching sounds or categories. Press Enter to search the library.";
+      results.append(empty);
+    }
+    results.hidden = false;
+    input.setAttribute("aria-expanded", "true");
+  }
+
+  function renderInstrumentBrowser(query = "") {
     const browser = $("#instrument-browser");
     browser.replaceChildren();
-    const instruments = state.tracks.filter((track) => !track.sourceId);
+    const allInstruments = state.tracks.filter((track) => !track.sourceId);
+    const instruments = allInstruments.filter((track) => matchesInstrumentSearch(track, query));
     $("#drum-sound-count").textContent = String(instruments.length);
+    if (!instruments.length && query) {
+      const empty = document.createElement("div");
+      empty.className = "instrument-search-empty";
+      empty.textContent = `No sounds found for "${query}".`;
+      browser.append(empty);
+      return;
+    }
     const families = new Map();
     instruments.forEach((track) => {
       const family = track.family || (track.kind === "sample" ? "Imported Sounds" : "Drums");
@@ -4750,15 +4868,7 @@
 
       let container = familyGroup;
       if (family === "Drums" || family === "Live Drums") {
-        const kindLabels = {
-          kick: "Kicks",
-          snare: "Snares",
-          clap: "Claps",
-          hat: "Closed Hi-Hats",
-          openhat: "Open Hi-Hats",
-          rim: "Rims & Percussion",
-        };
-        const kind = track.sampleCategory || (kindLabels[track.kind] ? kindLabels[track.kind] : "Other Drums");
+        const kind = getInstrumentCategory(track) || "Other Drums";
         const subsectionKey = `drum-kind-${kind.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
         let subsection = familyGroup.querySelector(`[data-subsection="${subsectionKey}"]`);
         if (!subsection) {
@@ -4893,12 +5003,14 @@
     });
   }
 
-  function openAssetLibrary() {
+  function openAssetLibrary(searchQuery = "") {
     captureCurrentPattern();
     captureCurrentMel();
     renderArrangementAssetBrowser();
     renderRecordingBrowser();
-    renderInstrumentBrowser();
+    $("#topbar-sound-search-input").value = searchQuery;
+    renderSoundSearchSuggestions("");
+    renderInstrumentBrowser(searchQuery);
     const dialog = $("#source-browser-dialog");
     if (!dialog.open) dialog.show();
   }
@@ -8471,6 +8583,39 @@
     });
     $("#assets-button").addEventListener("click", openAssetLibrary);
     $("#sequencer-browser-button").addEventListener("click", openAssetLibrary);
+    const soundSearchInput = $("#topbar-sound-search-input");
+    soundSearchInput.addEventListener("input", () => {
+      renderSoundSearchSuggestions(soundSearchInput.value);
+      if ($("#source-browser-dialog").open) renderInstrumentBrowser(soundSearchInput.value);
+    });
+    soundSearchInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        openAssetLibrary(soundSearchInput.value.trim());
+      } else if (event.key === "Escape") {
+        renderSoundSearchSuggestions("");
+        soundSearchInput.blur();
+      } else if (event.key === "ArrowDown") {
+        const firstResult = $("#topbar-sound-search-results").querySelector(".topbar-search-result");
+        if (firstResult) {
+          event.preventDefault();
+          firstResult.focus();
+        }
+      }
+    });
+    $("#topbar-sound-search-results").addEventListener("click", (event) => {
+      const result = event.target instanceof Element
+        ? event.target.closest("[data-search-query]")
+        : null;
+      if (!result) return;
+      openAssetLibrary(result.dataset.searchQuery || "");
+    });
+    document.addEventListener("pointerdown", (event) => {
+      const search = $("#topbar-sound-search");
+      if (event.target instanceof Node && !search.contains(event.target)) {
+        renderSoundSearchSuggestions("");
+      }
+    }, true);
     $("#sound-duration-slider").addEventListener("input", (event) => {
       setSoundDurationFromMenu(Number(event.currentTarget.value));
     });
