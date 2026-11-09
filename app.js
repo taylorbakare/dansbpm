@@ -3583,6 +3583,7 @@
   const djState = {
     activeDeck: "A",
     arrangementStartTime: null,
+    arrangementStopTime: null,
     arrangementViewStartBar: 0,
     crossfader: 50,
     masterVolume: 1,
@@ -4057,6 +4058,7 @@
     context.fillRect(0, 0, width, height);
 
     const now = state.audioContext?.currentTime || 0;
+    const playheadTime = djState.arrangementStopTime ?? now;
     const barSeconds = 240 / state.bpm;
     const origin = Number.isFinite(djState.arrangementStartTime) ? djState.arrangementStartTime : now;
     const timelineWidth = Math.max(1, width - 16);
@@ -4078,7 +4080,7 @@
       }
     }
 
-    const playheadBar = (now - origin) / barSeconds;
+    const playheadBar = (playheadTime - origin) / barSeconds;
     const playheadX = 8 + Math.max(0, Math.min(1,
       (playheadBar - djState.arrangementViewStartBar) / DJ_ARRANGEMENT_BARS)) * timelineWidth;
     context.fillStyle = "#f3f5e8";
@@ -4296,7 +4298,7 @@
       const start = isLive
         ? arrangementStart + djState.arrangementViewStartBar * barSeconds
         : Math.max(0, position - visibleSpan * 0.75);
-      const playheadPosition = isLive ? now : position;
+      const playheadPosition = isLive ? (djState.arrangementStopTime ?? now) : position;
       const liveStartTime = Number.isFinite(deck.dragPreviewStartTime)
         ? deck.dragPreviewStartTime
         : deck.playing && Number.isFinite(deck.visualStartTime)
@@ -4305,9 +4307,6 @@
       const liveStartPosition = deck.playing && !Number.isFinite(deck.dragPreviewStartTime)
         ? deck.visualStartPosition || 0
         : 0;
-      const liveStopTime = Number.isFinite(deck.dragPreviewStartTime) || deck.playing
-        ? Infinity
-        : deck.visualStopTime ?? Infinity;
       const timelineWidth = Math.max(1, width - 16);
       const binCount = Math.max(48, Math.min(900, Math.floor(timelineWidth)));
       const stepWidth = timelineWidth / binCount;
@@ -4327,7 +4326,7 @@
         }
         for (let bin = 0; bin < binCount; bin += 1) {
           const timelineTime = start + (bin + 0.5) / binCount * visibleSpan;
-          if (isLive && (timelineTime < liveStartTime || timelineTime > liveStopTime)) continue;
+          if (isLive && timelineTime < liveStartTime) continue;
           const sourcePosition = isLive
             ? liveStartPosition + (timelineTime - liveStartTime) * rate
             : timelineTime;
@@ -4359,7 +4358,7 @@
         }
         for (let bin = 0; bin < binCount; bin += 1) {
           const timelineValue = start + (bin + 0.5) / binCount * visibleSpan;
-          if (isLive && (timelineValue < liveStartTime || timelineValue > liveStopTime)) continue;
+          if (isLive && timelineValue < liveStartTime) continue;
           const timelineTick = isLive
             ? liveStartPosition + (timelineValue - liveStartTime) * state.bpm / 60 * 8 * rate
             : timelineValue;
@@ -4602,6 +4601,7 @@
 
   function stopDjDeck(deckId) {
     const deck = djState.decks[deckId];
+    const stoppedAt = deck.playing ? state.audioContext?.currentTime : null;
     if (deck.timerId !== null) window.clearInterval(deck.timerId);
     deck.timerId = null;
     if (deck.playing && state.audioContext) {
@@ -4630,7 +4630,9 @@
     deck.songGains.clear();
     deck.songEvents.clear();
     deck.playing = false;
-    if (!DJ_DECK_IDS.some((id) => djState.decks[id].playing)) djState.arrangementStartTime = null;
+    if (Number.isFinite(stoppedAt) && !DJ_DECK_IDS.some((id) => djState.decks[id].playing)) {
+      djState.arrangementStopTime = stoppedAt;
+    }
     updateDjDeckUI(deckId);
     refreshDjVisualTimer();
   }
@@ -4653,6 +4655,7 @@
           (!syncedStart || !Number.isFinite(djState.arrangementStartTime))) {
         djState.arrangementStartTime = baseStartTime;
       }
+      if (!anotherDeckPlaying) djState.arrangementStopTime = null;
       const stagedStartTime = Number.isFinite(djState.arrangementStartTime)
         ? djState.arrangementStartTime + deck.startOffsetBars * 240 / state.bpm
         : baseStartTime + deck.startOffsetBars * 240 / state.bpm;
@@ -5283,13 +5286,13 @@
     djDeckChordUsed.delete(event.code);
     if (shouldToggleDeck) {
       event.preventDefault();
-      event.stopPropagation();
+      event.stopImmediatePropagation();
       const deckId = event.code === "BracketLeft" ? "A" : "B";
       setActiveDjDeck(deckId);
       toggleDjDeck(deckId);
     } else if (chordUsed) {
       event.preventDefault();
-      event.stopPropagation();
+      event.stopImmediatePropagation();
     }
   }
 
@@ -5343,7 +5346,7 @@
       if (dialogOpen || (djControlFocused && !selectors.length &&
         !(event.ctrlKey || event.altKey || event.metaKey))) return;
       event.preventDefault();
-      event.stopPropagation();
+      event.stopImmediatePropagation();
       if (event.repeat) return;
       if (selectors.length) {
         selectors.forEach((code) => djDeckChordUsed.add(code));
@@ -5393,7 +5396,7 @@
     }
     if (handled) {
       event.preventDefault();
-      event.stopPropagation();
+      event.stopImmediatePropagation();
     }
   }
 
