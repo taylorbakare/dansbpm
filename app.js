@@ -4138,7 +4138,7 @@
     const reset = document.createElement("button");
     reset.type = "button";
     reset.className = "quiet-button mixer-reset-effect";
-    reset.textContent = "Reset to 0";
+    reset.textContent = "Reset";
     reset.addEventListener("click", () => {
       if (effectId === "eq") {
         ["eqSub", "eqLow", "eqMid", "eqHigh", "eqAir"].forEach((band) => { track.effects[band] = 0; });
