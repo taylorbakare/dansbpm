@@ -637,12 +637,22 @@
     $("#step-piano-context-label").textContent = active
       ? `${getPianoTrack(state.stepPianoEditContext.trackId)?.name || "Instrument"} · Step progression`
       : "";
+    if (active) {
+      const pattern = getPattern(state.stepPianoEditContext.patternId);
+      const dragSource = $("#mel-drag-source");
+      dragSource.textContent = pattern ? `Drag full ${pattern.name} to Track View` : "No pattern selected";
+      dragSource.title = pattern ? `Drag the full ${pattern.name} pattern to Track View` : "";
+      dragSource.setAttribute("aria-label", dragSource.title || "No pattern selected");
+      dragSource.disabled = !pattern;
+      dragSource.style.setProperty("--pattern-color", pattern?.color || "var(--accent)");
+    }
     ["#mel-select", "#piano-instrument-select", "#piano-bars-select"].forEach((selector) => {
       $(selector).closest("label").hidden = active;
     });
-    ["#new-mel-button", "#rename-mel-button", "#mel-drag-source", "#piano-keyboard-record-button"].forEach((selector) => {
+    ["#new-mel-button", "#rename-mel-button", "#piano-keyboard-record-button"].forEach((selector) => {
       $(selector).hidden = active;
     });
+    $("#mel-drag-source").hidden = false;
   }
 
   function openStepInstrumentPianoRoll(trackId) {
@@ -1077,6 +1087,8 @@
     const mel = getMel();
     const dragSource = $("#mel-drag-source");
     dragSource.textContent = mel ? `Drag ${mel.name} to Track View` : "No Mel selected";
+    dragSource.title = mel ? `Drag ${mel.name} to Track View` : "";
+    dragSource.setAttribute("aria-label", dragSource.title || "No Mel selected");
     dragSource.disabled = !mel;
     dragSource.style.setProperty("--pattern-color", "#b5a0ff");
   }
@@ -7724,6 +7736,14 @@
     $("#new-mel-button").addEventListener("click", createMel);
     $("#rename-mel-button").addEventListener("click", renameMel);
     $("#mel-drag-source").addEventListener("dragstart", (event) => {
+      if (state.stepPianoEditContext) {
+        syncStepPianoEdit();
+        const pattern = getPattern(state.stepPianoEditContext.patternId);
+        if (!pattern || !event.dataTransfer) return;
+        event.dataTransfer.setData("application/x-pulsegrid-pattern-source", JSON.stringify({ patternId: pattern.id }));
+        event.dataTransfer.effectAllowed = "copy";
+        return;
+      }
       const mel = getMel();
       if (!mel || !event.dataTransfer) return;
       event.dataTransfer.setData("application/x-pulsegrid-mel-source", JSON.stringify({ melId: mel.id }));
