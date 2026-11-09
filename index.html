@@ -327,6 +327,26 @@
                           <button class="quiet-button dj-expand-button" id="dj-expand-button" type="button" aria-pressed="false" aria-label="Expand DJ view">Expand</button>
                         </div>
                       </div>
+                      <section class="dj-master-panel" aria-label="DJ master controls">
+                        <h2>DJ Master</h2>
+                        <div class="dj-master-controls">
+                          <label class="dj-dial-control" for="dj-master-volume">
+                            <span>MASTER VOLUME</span><div class="dj-dial"><input id="dj-master-volume" type="range" min="0" max="100" value="100" aria-label="DJ master volume"></div><output id="dj-master-volume-value">100%</output>
+                          </label>
+                          <label class="dj-dial-control" for="dj-master-low">
+                            <span>MASTER LOW</span><div class="dj-dial"><input id="dj-master-low" type="range" min="-12" max="12" value="0" aria-label="DJ master low EQ"></div><output id="dj-master-low-value">0 dB</output>
+                          </label>
+                          <label class="dj-dial-control" for="dj-master-mid">
+                            <span>MASTER MID</span><div class="dj-dial"><input id="dj-master-mid" type="range" min="-12" max="12" value="0" aria-label="DJ master mid EQ"></div><output id="dj-master-mid-value">0 dB</output>
+                          </label>
+                          <label class="dj-dial-control" for="dj-master-high">
+                            <span>MASTER HIGH</span><div class="dj-dial"><input id="dj-master-high" type="range" min="-12" max="12" value="0" aria-label="DJ master high EQ"></div><output id="dj-master-high-value">0 dB</output>
+                          </label>
+                          <label class="dj-dial-control" for="dj-master-filter">
+                            <span>MASTER FILTER</span><div class="dj-dial"><input id="dj-master-filter" type="range" min="200" max="20000" step="100" value="20000" aria-label="DJ master filter"></div><output id="dj-master-filter-value">20 kHz</output>
+                          </label>
+                        </div>
+                      </section>
                       <div class="dj-decks">
                         <section class="dj-deck" id="dj-deck-a" data-deck="A">
                           <div class="dj-deck-heading">
@@ -353,8 +373,23 @@
                             <button class="quiet-button dj-nudge" data-deck="A" data-direction="1" type="button" aria-label="Nudge deck A forward">+</button>
                             <button class="quiet-button dj-add-slot" data-deck="A" type="button">Add Cue Slot</button>
                           </div>
-                          <label class="dj-knob-control" for="dj-volume-a"><span>VOLUME</span><input id="dj-volume-a" type="range" min="0" max="100" value="80" aria-label="Deck A volume"></label>
-                          <label class="dj-knob-control" for="dj-filter-a"><span>FILTER</span><input id="dj-filter-a" type="range" min="200" max="20000" step="100" value="20000" aria-label="Deck A filter"></label>
+                          <div class="dj-deck-knobs" aria-label="Deck A controls">
+                            <label class="dj-dial-control" for="dj-volume-a">
+                              <span>VOLUME</span><div class="dj-dial"><input id="dj-volume-a" type="range" min="0" max="100" value="80" aria-label="Deck A volume"></div><output id="dj-volume-a-value">80%</output>
+                            </label>
+                            <label class="dj-dial-control" for="dj-filter-a">
+                              <span>FILTER</span><div class="dj-dial"><input id="dj-filter-a" type="range" min="200" max="20000" step="100" value="20000" aria-label="Deck A filter"></div><output id="dj-filter-a-value">20 kHz</output>
+                            </label>
+                            <label class="dj-dial-control" for="dj-eq-low-a">
+                              <span>LOW EQ</span><div class="dj-dial"><input id="dj-eq-low-a" type="range" min="-12" max="12" value="0" aria-label="Deck A low EQ"></div><output id="dj-eq-low-a-value">0 dB</output>
+                            </label>
+                            <label class="dj-dial-control" for="dj-eq-mid-a">
+                              <span>MID EQ</span><div class="dj-dial"><input id="dj-eq-mid-a" type="range" min="-12" max="12" value="0" aria-label="Deck A mid EQ"></div><output id="dj-eq-mid-a-value">0 dB</output>
+                            </label>
+                            <label class="dj-dial-control" for="dj-eq-high-a">
+                              <span>HIGH EQ</span><div class="dj-dial"><input id="dj-eq-high-a" type="range" min="-12" max="12" value="0" aria-label="Deck A high EQ"></div><output id="dj-eq-high-a-value">0 dB</output>
+                            </label>
+                          </div>
                         </section>
                         <section class="dj-deck" id="dj-deck-b" data-deck="B">
                           <div class="dj-deck-heading">
@@ -381,8 +416,23 @@
                             <button class="quiet-button dj-nudge" data-deck="B" data-direction="1" type="button" aria-label="Nudge deck B forward">+</button>
                             <button class="quiet-button dj-add-slot" data-deck="B" type="button">Add Cue Slot</button>
                           </div>
-                          <label class="dj-knob-control" for="dj-volume-b"><span>VOLUME</span><input id="dj-volume-b" type="range" min="0" max="100" value="80" aria-label="Deck B volume"></label>
-                          <label class="dj-knob-control" for="dj-filter-b"><span>FILTER</span><input id="dj-filter-b" type="range" min="200" max="20000" step="100" value="20000" aria-label="Deck B filter"></label>
+                          <div class="dj-deck-knobs" aria-label="Deck B controls">
+                            <label class="dj-dial-control" for="dj-volume-b">
+                              <span>VOLUME</span><div class="dj-dial"><input id="dj-volume-b" type="range" min="0" max="100" value="80" aria-label="Deck B volume"></div><output id="dj-volume-b-value">80%</output>
+                            </label>
+                            <label class="dj-dial-control" for="dj-filter-b">
+                              <span>FILTER</span><div class="dj-dial"><input id="dj-filter-b" type="range" min="200" max="20000" step="100" value="20000" aria-label="Deck B filter"></div><output id="dj-filter-b-value">20 kHz</output>
+                            </label>
+                            <label class="dj-dial-control" for="dj-eq-low-b">
+                              <span>LOW EQ</span><div class="dj-dial"><input id="dj-eq-low-b" type="range" min="-12" max="12" value="0" aria-label="Deck B low EQ"></div><output id="dj-eq-low-b-value">0 dB</output>
+                            </label>
+                            <label class="dj-dial-control" for="dj-eq-mid-b">
+                              <span>MID EQ</span><div class="dj-dial"><input id="dj-eq-mid-b" type="range" min="-12" max="12" value="0" aria-label="Deck B mid EQ"></div><output id="dj-eq-mid-b-value">0 dB</output>
+                            </label>
+                            <label class="dj-dial-control" for="dj-eq-high-b">
+                              <span>HIGH EQ</span><div class="dj-dial"><input id="dj-eq-high-b" type="range" min="-12" max="12" value="0" aria-label="Deck B high EQ"></div><output id="dj-eq-high-b-value">0 dB</output>
+                            </label>
+                          </div>
                         </section>
                       </div>
                       <section class="dj-arrangement" aria-labelledby="dj-arrangement-title">

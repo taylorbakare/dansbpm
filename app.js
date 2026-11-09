@@ -3389,20 +3389,40 @@
   const djState = {
     activeDeck: "A",
     crossfader: 50,
+    masterVolume: 1,
+    masterLow: 0,
+    masterMid: 0,
+    masterHigh: 0,
+    masterFilter: 20000,
     liveSlots: Array(8).fill(null),
     decks: {
-      A: { sourceKey: "", volume: 0.8, filter: 20000, pitch: 0, reverse: false, startOffsetBars: 0, playing: false, timerId: null, audioSource: null, songSources: new Set(), songGains: new Map(), songEvents: new Set(), songAnchorTime: 0, songPositionBar: 0, songRate: 1, songDurationBars: 0, songEndTime: 0, filterNode: null, gainNode: null, nextStepTime: 0, stepIndex: 0, scratchRate: 1, nudgeRate: 1, isScratching: false },
-      B: { sourceKey: "", volume: 0.8, filter: 20000, pitch: 0, reverse: false, startOffsetBars: 0, playing: false, timerId: null, audioSource: null, songSources: new Set(), songGains: new Map(), songEvents: new Set(), songAnchorTime: 0, songPositionBar: 0, songRate: 1, songDurationBars: 0, songEndTime: 0, filterNode: null, gainNode: null, nextStepTime: 0, stepIndex: 0, scratchRate: 1, nudgeRate: 1, isScratching: false },
+      A: { sourceKey: "", volume: 0.8, filter: 20000, eqLow: 0, eqMid: 0, eqHigh: 0, pitch: 0, reverse: false, startOffsetBars: 0, playing: false, timerId: null, audioSource: null, songSources: new Set(), songGains: new Map(), songEvents: new Set(), songAnchorTime: 0, songPositionBar: 0, songRate: 1, songDurationBars: 0, songEndTime: 0, filterNode: null, eqLowNode: null, eqMidNode: null, eqHighNode: null, gainNode: null, audioContext: null, djMasterInput: null, nextStepTime: 0, stepIndex: 0, scratchRate: 1, nudgeRate: 1, isScratching: false },
+      B: { sourceKey: "", volume: 0.8, filter: 20000, eqLow: 0, eqMid: 0, eqHigh: 0, pitch: 0, reverse: false, startOffsetBars: 0, playing: false, timerId: null, audioSource: null, songSources: new Set(), songGains: new Map(), songEvents: new Set(), songAnchorTime: 0, songPositionBar: 0, songRate: 1, songDurationBars: 0, songEndTime: 0, filterNode: null, eqLowNode: null, eqMidNode: null, eqHighNode: null, gainNode: null, audioContext: null, djMasterInput: null, nextStepTime: 0, stepIndex: 0, scratchRate: 1, nudgeRate: 1, isScratching: false },
     },
   };
   let djVisualTimer = null;
   let djViewExpanded = false;
+  let djMasterChain = null;
   const reversedDjBuffers = new WeakMap();
 
   function setDjViewExpanded(expanded, restoreFocus = true) {
     if (expanded && state.view !== "dj") return;
     djViewExpanded = expanded;
     document.body.classList.toggle("is-dj-expanded", expanded);
+    if (expanded) {
+      const shell = document.querySelector(".app-shell");
+      if (shell?.requestFullscreen) {
+        shell.requestFullscreen().catch((error) => {
+          if (djViewExpanded) showToast(`Browser fullscreen unavailable: ${error.message || "permission was denied"}`);
+        });
+      } else {
+        showToast("Browser fullscreen is unavailable; DJ View will fill the app window.");
+      }
+    } else if (document.fullscreenElement) {
+      document.exitFullscreen().catch((error) => {
+        showToast(`Could not exit browser fullscreen: ${error.message || "browser denied the request"}`);
+      });
+    }
     const button = $("#dj-expand-button");
     button.textContent = expanded ? "Exit full screen" : "Expand";
     button.setAttribute("aria-label", expanded ? "Exit expanded DJ view" : "Expand DJ view");
@@ -3410,6 +3430,10 @@
     if (!expanded && restoreFocus) button.focus();
     window.requestAnimationFrame(drawDjLiveView);
   }
+
+  document.addEventListener("fullscreenchange", () => {
+    if (!document.fullscreenElement && djViewExpanded) setDjViewExpanded(false, false);
+  });
 
   function getDjStorageKey() {
     return `${getProjectStorageKey(state.projectId)}:dj`;
@@ -3420,6 +3444,11 @@
       const saved = {
         activeDeck: djState.activeDeck,
         crossfader: djState.crossfader,
+        masterVolume: djState.masterVolume,
+        masterLow: djState.masterLow,
+        masterMid: djState.masterMid,
+        masterHigh: djState.masterHigh,
+        masterFilter: djState.masterFilter,
         liveSlots: djState.liveSlots,
         decks: Object.fromEntries(DJ_DECK_IDS.map((deckId) => {
           const deck = djState.decks[deckId];
@@ -3427,6 +3456,9 @@
             sourceKey: deck.sourceKey,
             volume: deck.volume,
             filter: deck.filter,
+            eqLow: deck.eqLow,
+            eqMid: deck.eqMid,
+            eqHigh: deck.eqHigh,
             pitch: deck.pitch,
             reverse: deck.reverse,
             startOffsetBars: deck.startOffsetBars,
@@ -3445,6 +3477,11 @@
       if (!saved || typeof saved !== "object") return;
       if (saved.activeDeck === "A" || saved.activeDeck === "B") djState.activeDeck = saved.activeDeck;
       if (Number.isFinite(saved.crossfader)) djState.crossfader = Math.max(0, Math.min(100, saved.crossfader));
+      if (Number.isFinite(saved.masterVolume)) djState.masterVolume = Math.max(0, Math.min(1, saved.masterVolume));
+      if (Number.isFinite(saved.masterLow)) djState.masterLow = Math.max(-12, Math.min(12, saved.masterLow));
+      if (Number.isFinite(saved.masterMid)) djState.masterMid = Math.max(-12, Math.min(12, saved.masterMid));
+      if (Number.isFinite(saved.masterHigh)) djState.masterHigh = Math.max(-12, Math.min(12, saved.masterHigh));
+      if (Number.isFinite(saved.masterFilter)) djState.masterFilter = Math.max(200, Math.min(20000, saved.masterFilter));
       if (Array.isArray(saved.liveSlots)) {
         djState.liveSlots = Array.from({ length: 8 }, (_, index) => {
           const slot = saved.liveSlots[index];
@@ -3460,6 +3497,9 @@
         if (typeof savedDeck.sourceKey === "string") deck.sourceKey = savedDeck.sourceKey;
         if (Number.isFinite(savedDeck.volume)) deck.volume = Math.max(0, Math.min(1, savedDeck.volume));
         if (Number.isFinite(savedDeck.filter)) deck.filter = Math.max(200, Math.min(20000, savedDeck.filter));
+        if (Number.isFinite(savedDeck.eqLow)) deck.eqLow = Math.max(-12, Math.min(12, savedDeck.eqLow));
+        if (Number.isFinite(savedDeck.eqMid)) deck.eqMid = Math.max(-12, Math.min(12, savedDeck.eqMid));
+        if (Number.isFinite(savedDeck.eqHigh)) deck.eqHigh = Math.max(-12, Math.min(12, savedDeck.eqHigh));
         if (Number.isFinite(savedDeck.pitch)) deck.pitch = Math.max(-8, Math.min(8, savedDeck.pitch));
         deck.reverse = savedDeck.reverse === true;
         if (Number.isFinite(savedDeck.startOffsetBars)) {
@@ -3527,6 +3567,32 @@
     return groups;
   }
 
+  function updateDjDial(input, formatValue) {
+    const min = Number(input.min) || 0;
+    const max = Number(input.max) || 100;
+    const ratio = Math.max(0, Math.min(1, (Number(input.value) - min) / (max - min)));
+    const dial = input.closest(".dj-dial");
+    dial.style.setProperty("--dj-dial-angle", `${-135 + ratio * 270}deg`);
+    dial.style.setProperty("--dj-dial-fill", `${ratio * 270}deg`);
+    input.closest(".dj-dial-control").querySelector("output").textContent = formatValue(Number(input.value));
+  }
+
+  function formatDjDialValue(type, value) {
+    if (type === "volume") return `${Math.round(value)}%`;
+    if (type === "frequency") return value >= 1000 ? `${(value / 1000).toFixed(value % 1000 ? 1 : 0)} kHz` : `${value} Hz`;
+    return `${value > 0 ? "+" : ""}${Math.round(value)} dB`;
+  }
+
+  function bindDjDial(id, type, onInput) {
+    const input = $(`#${id}`);
+    input.addEventListener("input", () => {
+      const value = Number(input.value);
+      updateDjDial(input, (dialValue) => formatDjDialValue(type, dialValue));
+      onInput(value);
+    });
+    input.addEventListener("change", saveDjState);
+  }
+
   function renderDjView() {
     const groups = getDjSourceOptions();
     DJ_DECK_IDS.forEach((deckId) => {
@@ -3554,8 +3620,28 @@
       if (select.value !== deck.sourceKey) deck.sourceKey = "";
       $(`#dj-volume-${suffix}`).value = String(Math.round(deck.volume * 100));
       $(`#dj-filter-${suffix}`).value = String(deck.filter);
+      $(`#dj-eq-low-${suffix}`).value = String(deck.eqLow);
+      $(`#dj-eq-mid-${suffix}`).value = String(deck.eqMid);
+      $(`#dj-eq-high-${suffix}`).value = String(deck.eqHigh);
+      updateDjDial($(`#dj-volume-${suffix}`), (value) => formatDjDialValue("volume", value));
+      updateDjDial($(`#dj-filter-${suffix}`), (value) => formatDjDialValue("frequency", value));
+      updateDjDial($(`#dj-eq-low-${suffix}`), (value) => formatDjDialValue("eq", value));
+      updateDjDial($(`#dj-eq-mid-${suffix}`), (value) => formatDjDialValue("eq", value));
+      updateDjDial($(`#dj-eq-high-${suffix}`), (value) => formatDjDialValue("eq", value));
       $(`#dj-pitch-${suffix}`).value = String(deck.pitch);
       updateDjDeckUI(deckId);
+    });
+    const masterControls = [
+      ["dj-master-volume", djState.masterVolume, "volume"],
+      ["dj-master-low", djState.masterLow, "eq"],
+      ["dj-master-mid", djState.masterMid, "eq"],
+      ["dj-master-high", djState.masterHigh, "eq"],
+      ["dj-master-filter", djState.masterFilter, "frequency"],
+    ];
+    masterControls.forEach(([id, value, type]) => {
+      const input = $(`#${id}`);
+      input.value = String(type === "volume" ? Math.round(value * 100) : value);
+      updateDjDial(input, (dialValue) => formatDjDialValue(type, dialValue));
     });
     $("#dj-crossfader").value = String(djState.crossfader);
 
@@ -4104,26 +4190,81 @@
     saveDjState();
   }
 
+  function createDjEqNodes(context) {
+    const lowNode = context.createBiquadFilter();
+    lowNode.type = "lowshelf";
+    lowNode.frequency.value = 250;
+    const midNode = context.createBiquadFilter();
+    midNode.type = "peaking";
+    midNode.frequency.value = 1000;
+    midNode.Q.value = 0.8;
+    const highNode = context.createBiquadFilter();
+    highNode.type = "highshelf";
+    highNode.frequency.value = 6500;
+    lowNode.connect(midNode);
+    midNode.connect(highNode);
+    return { lowNode, midNode, highNode };
+  }
+
+  function ensureDjMasterAudio() {
+    if (djMasterChain?.context === state.audioContext && djMasterChain.output === state.masterGain) return djMasterChain;
+    if (djMasterChain) {
+      [djMasterChain.lowNode, djMasterChain.midNode, djMasterChain.highNode,
+        djMasterChain.filterNode, djMasterChain.gainNode].forEach((node) => node.disconnect());
+    }
+    const context = state.audioContext;
+    const eqNodes = createDjEqNodes(context);
+    const filterNode = context.createBiquadFilter();
+    filterNode.type = "lowpass";
+    const gainNode = context.createGain();
+    eqNodes.highNode.connect(filterNode);
+    filterNode.connect(gainNode);
+    gainNode.connect(state.masterGain);
+    djMasterChain = { context, output: state.masterGain, ...eqNodes, filterNode, gainNode };
+    return djMasterChain;
+  }
+
   function ensureDjDeckAudio(deck) {
-    if (!deck.filterNode) {
+    const masterChain = ensureDjMasterAudio();
+    if (deck.audioContext !== state.audioContext || deck.djMasterInput !== masterChain.lowNode || !deck.filterNode) {
+      [deck.eqLowNode, deck.eqMidNode, deck.eqHighNode, deck.filterNode, deck.gainNode]
+        .filter(Boolean).forEach((node) => node.disconnect());
+      const eqNodes = createDjEqNodes(state.audioContext);
+      deck.eqLowNode = eqNodes.lowNode;
+      deck.eqMidNode = eqNodes.midNode;
+      deck.eqHighNode = eqNodes.highNode;
       deck.filterNode = state.audioContext.createBiquadFilter();
       deck.filterNode.type = "lowpass";
       deck.gainNode = state.audioContext.createGain();
+      deck.eqHighNode.connect(deck.filterNode);
       deck.filterNode.connect(deck.gainNode);
-      deck.gainNode.connect(state.masterGain);
+      deck.gainNode.connect(masterChain.lowNode);
+      deck.audioContext = state.audioContext;
+      deck.djMasterInput = masterChain.lowNode;
     }
     applyDjMixer();
   }
 
   function applyDjMixer() {
     if (!state.audioContext || !state.masterGain) return;
+    const now = state.audioContext.currentTime;
+    if (djMasterChain?.context === state.audioContext) {
+      djMasterChain.lowNode.gain.setTargetAtTime(djState.masterLow, now, 0.015);
+      djMasterChain.midNode.gain.setTargetAtTime(djState.masterMid, now, 0.015);
+      djMasterChain.highNode.gain.setTargetAtTime(djState.masterHigh, now, 0.015);
+      djMasterChain.filterNode.frequency.setTargetAtTime(djState.masterFilter, now, 0.015);
+      djMasterChain.gainNode.gain.setTargetAtTime(djState.masterVolume, now, 0.015);
+    }
     const crossfader = djState.crossfader / 100;
     const gains = [Math.cos(crossfader * Math.PI / 2), Math.sin(crossfader * Math.PI / 2)];
     DJ_DECK_IDS.forEach((deckId, index) => {
       const deck = djState.decks[deckId];
-      if (!deck.filterNode || !deck.gainNode) return;
-      deck.filterNode.frequency.setTargetAtTime(deck.filter, state.audioContext.currentTime, 0.015);
-      deck.gainNode.gain.setTargetAtTime(deck.volume * gains[index], state.audioContext.currentTime, 0.015);
+      if (!deck.filterNode || !deck.gainNode || deck.audioContext !== state.audioContext) return;
+      deck.eqLowNode.gain.setTargetAtTime(deck.eqLow, now, 0.015);
+      deck.eqMidNode.gain.setTargetAtTime(deck.eqMid, now, 0.015);
+      deck.eqHighNode.gain.setTargetAtTime(deck.eqHigh, now, 0.015);
+      deck.filterNode.frequency.setTargetAtTime(deck.filter, now, 0.015);
+      deck.gainNode.gain.setTargetAtTime(deck.volume * gains[index], now, 0.015);
     });
   }
 
@@ -4226,7 +4367,7 @@
         player.loopStart = loopStart;
         player.loopEnd = loopEnd;
         player.playbackRate.value = getDjRate(deck);
-        player.connect(deck.filterNode);
+        player.connect(deck.eqLowNode);
         player.onended = () => {
           if (deck.audioSource === player) deck.audioSource = null;
         };
@@ -4310,7 +4451,7 @@
     if (!gain) {
       gain = state.audioContext.createGain();
       gain.gain.value = level;
-      gain.connect(deck.filterNode);
+      gain.connect(deck.eqLowNode);
       deck.songGains.set(key, gain);
     }
     return gain;
@@ -4485,7 +4626,7 @@
               Array.isArray(pattern.stepPianoNotes?.[trackId])) return;
             const variant = pattern.variants?.[trackId] || "classic";
             triggerTrack(track, getTrackStepTime(track, eventStep, pattern, eventTime),
-              eventStep, variant, getNoteDuration(pattern) / getDjRate(deck), track, deck.filterNode);
+              eventStep, variant, getNoteDuration(pattern) / getDjRate(deck), track, deck.eqLowNode);
           });
         });
         Object.entries(source.item.stepPianoNotes || {}).forEach(([trackId, notes]) => {
@@ -4494,7 +4635,7 @@
           notes.filter((note) => Math.floor(note.startTick) === clockStep).forEach((note) => {
             playPianoNote(track, deck.nextStepTime, note.midi,
               note.durationTicks * tickDuration, note.velocity ?? 0.8,
-              track, deck.filterNode, note);
+              track, deck.eqLowNode, note);
           });
         });
       } else {
@@ -4505,7 +4646,7 @@
           mel.notes.filter((note) => Math.floor(note.startTick) === clockStep).forEach((note) => {
             playPianoNote(instrument, deck.nextStepTime, note.midi,
               note.durationTicks * tickDuration, note.velocity ?? 0.8,
-              instrument, deck.filterNode, note);
+              instrument, deck.eqLowNode, note);
           });
         }
         deck.stepIndex = (clockStep + (deck.reverse ? -1 : 1) + loopTicks) % loopTicks;
@@ -4630,7 +4771,7 @@
         return;
       }
       playPianoNote(track, state.audioContext.currentTime + 0.01, DJ_PAD_NOTES[index],
-        getStepDuration(), 0.85, track, deck.filterNode);
+        getStepDuration(), 0.85, track, deck.eqLowNode);
     } catch (error) {
       showToast(error.message || "DJ drum pad could not play.");
     }
@@ -4769,16 +4910,26 @@
       });
       $(`#dj-sync-${suffix}`).addEventListener("click", () => syncDjDeck(deckId));
       $(`#dj-focus-${suffix}`).addEventListener("click", () => setActiveDjDeck(deckId));
-      $(`#dj-volume-${suffix}`).addEventListener("input", (event) => {
-        djState.decks[deckId].volume = Number(event.target.value) / 100;
+      bindDjDial(`dj-volume-${suffix}`, "volume", (value) => {
+        djState.decks[deckId].volume = value / 100;
         applyDjMixer();
       });
-      $(`#dj-volume-${suffix}`).addEventListener("change", saveDjState);
-      $(`#dj-filter-${suffix}`).addEventListener("input", (event) => {
-        djState.decks[deckId].filter = Number(event.target.value);
+      bindDjDial(`dj-filter-${suffix}`, "frequency", (value) => {
+        djState.decks[deckId].filter = value;
         applyDjMixer();
       });
-      $(`#dj-filter-${suffix}`).addEventListener("change", saveDjState);
+      bindDjDial(`dj-eq-low-${suffix}`, "eq", (value) => {
+        djState.decks[deckId].eqLow = value;
+        applyDjMixer();
+      });
+      bindDjDial(`dj-eq-mid-${suffix}`, "eq", (value) => {
+        djState.decks[deckId].eqMid = value;
+        applyDjMixer();
+      });
+      bindDjDial(`dj-eq-high-${suffix}`, "eq", (value) => {
+        djState.decks[deckId].eqHigh = value;
+        applyDjMixer();
+      });
       $(`#dj-pitch-${suffix}`).addEventListener("input", (event) => {
         const deck = djState.decks[deckId];
         deck.pitch = Number(event.target.value);
@@ -4789,6 +4940,26 @@
         updateDjDeckUI(deckId);
       });
       $(`#dj-pitch-${suffix}`).addEventListener("change", saveDjState);
+    });
+    bindDjDial("dj-master-volume", "volume", (value) => {
+      djState.masterVolume = value / 100;
+      applyDjMixer();
+    });
+    bindDjDial("dj-master-low", "eq", (value) => {
+      djState.masterLow = value;
+      applyDjMixer();
+    });
+    bindDjDial("dj-master-mid", "eq", (value) => {
+      djState.masterMid = value;
+      applyDjMixer();
+    });
+    bindDjDial("dj-master-high", "eq", (value) => {
+      djState.masterHigh = value;
+      applyDjMixer();
+    });
+    bindDjDial("dj-master-filter", "frequency", (value) => {
+      djState.masterFilter = value;
+      applyDjMixer();
 
       const platter = $(`#dj-platter-${suffix}`);
       platter.addEventListener("focus", () => setActiveDjDeck(deckId));

@@ -630,6 +630,9 @@ kbd { border: 1px solid #393a3f; border-radius: 3px; padding: 2px 4px; color: #b
 .dj-heading h1 { font-size: 18px; }
 .dj-heading .section-subtitle { font-size: 10px; }
 .dj-heading-actions { width: 42%; max-width: 430px; min-width: 285px; display: flex; align-items: center; gap: 10px; }
+.dj-master-panel { display: grid; grid-template-columns: 90px minmax(0, 1fr); align-items: center; gap: 12px; margin-bottom: 12px; border: 1px solid #34353a; border-radius: 7px; background: #1b1c1f; padding: 8px 12px; }
+.dj-master-panel h2 { margin: 0; color: #d7d8d4; font-size: 11px; }
+.dj-master-controls { display: grid; grid-template-columns: repeat(5, minmax(54px, 1fr)); gap: 8px; }
 .dj-crossfader-control { width: auto; min-width: 0; flex: 1; }
 .dj-expand-button { flex: 0 0 auto; white-space: nowrap; }
 .dj-crossfader-control > label, .dj-knob-control > span, .dj-source-control { color: var(--faint); font-family: var(--mono); font-size: 8px; letter-spacing: .6px; }
@@ -663,6 +666,14 @@ kbd { border: 1px solid #393a3f; border-radius: 3px; padding: 2px 4px; color: #b
 .dj-deck-transport { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 10px 0; }
 .dj-deck-transport button { min-height: 27px; padding: 0 8px; font-size: 9px; }
 .dj-knob-control { display: grid; grid-template-columns: 54px minmax(0, 1fr); align-items: center; gap: 8px; margin-top: 8px; }
+.dj-deck-knobs { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; margin-top: 10px; border-top: 1px solid #303136; padding-top: 9px; }
+.dj-dial-control { min-width: 0; display: grid; justify-items: center; align-content: start; gap: 4px; color: var(--faint); font-family: var(--mono); font-size: 7px; text-align: center; }
+.dj-dial-control > span { width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dj-dial-control output { min-height: 10px; color: #d7d8d4; font-size: 7px; }
+.dj-dial { position: relative; width: 36px; aspect-ratio: 1; border: 1px solid #4a4b50; border-radius: 50%; background: conic-gradient(from 225deg, var(--accent) 0deg var(--dj-dial-fill, 270deg), #38393e var(--dj-dial-fill, 270deg) 270deg, #242529 270deg); box-shadow: inset 0 0 0 5px #1c1d20, 0 2px 5px #0006; }
+.dj-dial::after { position: absolute; top: 4px; left: 50%; width: 2px; height: 7px; border-radius: 2px; background: #f0f1e9; content: ""; transform: translateX(-50%) rotate(var(--dj-dial-angle, 135deg)); transform-origin: 50% 14px; pointer-events: none; }
+.dj-dial:focus-within { outline: 2px solid var(--accent); outline-offset: 3px; }
+.dj-dial input { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: ew-resize; }
 .dj-arrangement, .dj-cue-slots, .dj-pads { margin-top: 16px; }
 .dj-section-heading { margin-bottom: 8px; }
 .dj-section-heading p { margin: 3px 0 0; color: #85868b; font-size: 9px; }
@@ -681,10 +692,10 @@ kbd { border: 1px solid #393a3f; border-radius: 3px; padding: 2px 4px; color: #b
 .dj-live-slot strong { display: block; color: var(--accent); font-family: var(--mono); font-size: 8px; }
 .dj-live-slot span { display: block; overflow: hidden; margin-top: 3px; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
 .dj-live-slot-clear { position: absolute; top: 4px; right: 4px; width: 15px; height: 15px; border: 0; background: transparent; padding: 0; color: #85868b; font-size: 11px; cursor: pointer; }
-.dj-pad-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
-.dj-pad { min-height: 44px; border: 1px solid #3a3b40; border-radius: 6px; background: linear-gradient(145deg, #292a2e, #1d1e21); color: #d7d8d2; cursor: pointer; }
+.dj-pad-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
+.dj-pad { min-height: 36px; border: 1px solid #3a3b40; border-radius: 6px; background: linear-gradient(145deg, #292a2e, #1d1e21); color: #d7d8d2; font-size: 9px; cursor: pointer; }
 .dj-pad:hover, .dj-pad:active { border-color: var(--accent); background: #292d21; color: var(--accent); }
-.dj-pad kbd { display: block; margin-top: 3px; color: #85868b; font-family: var(--mono); font-size: 8px; }
+.dj-pad kbd { display: block; margin-top: 2px; color: #85868b; font-family: var(--mono); font-size: 7px; }
 .dj-controls-hint { margin: 14px 0 0; color: #77787e; font-size: 9px; line-height: 1.5; }
 
 @media (max-width: 700px) {
@@ -700,6 +711,9 @@ kbd { border: 1px solid #393a3f; border-radius: 3px; padding: 2px 4px; color: #b
   .dj-live-slots { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .dj-heading { align-items: flex-start; flex-wrap: wrap; }
   .dj-heading-actions { width: 100%; max-width: none; min-width: 0; }
+  .dj-master-panel { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .dj-master-controls { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .dj-deck-knobs { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 }
 
 @media (max-width: 420px) {
@@ -896,6 +910,11 @@ body:has(#dj-view:not([hidden])).is-dj-expanded .app-shell {
   height: 100dvh;
   margin: 0;
   padding: 0;
+}
+body:has(#dj-view:not([hidden])).is-dj-expanded .app-shell:fullscreen {
+  width: 100vw;
+  height: 100dvh;
+  background: #141518;
 }
 body:has(#dj-view:not([hidden])).is-dj-expanded > .app-shell > .topbar,
 body:has(#dj-view:not([hidden])).is-dj-expanded > .app-shell > .transport-panel,
