@@ -2319,8 +2319,30 @@
       saveState();
       renderTracks();
       if (isSongWorkspace()) renderArrangement();
+      previewInstrumentSound(track);
     });
     return select;
+  }
+
+  async function previewInstrumentSound(track) {
+    try {
+      await ensureAudio();
+      if (track.kind === "sample" && !track.sample) {
+        throw new Error("This sample is not ready to preview.");
+      }
+      const duration = track.sample?.buffer.duration || (track.kind === "instrument" ? 0.65 : getStepDuration());
+      playPianoNote(
+        track,
+        state.audioContext.currentTime + 0.015,
+        getDefaultStepMidi(track),
+        duration,
+        0.8,
+        track,
+        state.masterGain,
+      );
+    } catch (error) {
+      showToast(error.message || `Could not preview ${track.name}.`);
+    }
   }
 
   function makeTrackButton(type, label, track) {
@@ -4304,10 +4326,13 @@
       const color = document.createElement("span");
       color.className = "source-color";
       color.style.background = track.color;
-      const name = document.createElement("span");
+      const name = document.createElement("button");
       name.className = "instrument-source-name";
+      name.type = "button";
       name.textContent = track.name;
       name.title = track.sample?.name || track.subtitle;
+      name.setAttribute("aria-label", `Preview ${track.name}`);
+      name.addEventListener("click", () => previewInstrumentSound(track));
       row.append(color, name);
       const soundSelect = makeSoundSelect(track, true);
       if (soundSelect) row.append(soundSelect);
