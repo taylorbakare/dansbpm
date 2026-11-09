@@ -8156,13 +8156,19 @@
         nudgeSelectedPianoNotes(0, event.key === "ArrowUp" ? 12 : -12);
       }
       if (!isTyping && !dialogOpen && !event.ctrlKey && !event.metaKey && !event.altKey &&
+        state.view === "arrangement" && event.key === "ArrowLeft") {
+        event.preventDefault();
+        if (!event.repeat) setArrangementCursor(0);
+      }
+      if (!isTyping && !dialogOpen && !event.ctrlKey && !event.metaKey && !event.altKey &&
         ["arrangement", "mixer"].includes(state.view) && state.selectedArrangementItems.size &&
-        (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+        (event.key === "ArrowLeft" || event.key === "ArrowRight") &&
+        !(state.view === "arrangement" && event.key === "ArrowLeft")) {
         event.preventDefault();
         nudgeSelectedArrangementItems(event.key === "ArrowRight" ? 1 : -1);
       }
       if (!isTyping && !dialogOpen && !event.repeat && !event.ctrlKey && !event.metaKey && !event.altKey &&
-        ["arrangement", "mixer"].includes(state.view) && !state.selectedArrangementItems.size &&
+        state.view === "mixer" && !state.selectedArrangementItems.size &&
         event.key === "ArrowLeft") {
         event.preventDefault();
         setArrangementCursor(0);
