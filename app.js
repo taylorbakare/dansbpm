@@ -1406,6 +1406,166 @@
     return Number(value).toFixed(2);
   }
 
+  const dansBpmSynthPreview = {
+    playing: false,
+    starting: false,
+    startRequestId: 0,
+    timerId: null,
+    animationFrame: null,
+    context: null,
+    output: null,
+    analyser: null,
+    waveform: null,
+    noteIndex: 0,
+    nextNoteTime: 0,
+  };
+
+  function ensureDansBpmSynthPreviewAudio() {
+    const context = state.audioContext;
+    if (dansBpmSynthPreview.context === context && dansBpmSynthPreview.output) return;
+    dansBpmSynthPreview.output?.disconnect();
+    dansBpmSynthPreview.analyser?.disconnect();
+    const output = context.createGain();
+    output.gain.value = 0;
+    const analyser = context.createAnalyser();
+    analyser.fftSize = 1024;
+    analyser.smoothingTimeConstant = 0.78;
+    output.connect(analyser);
+    analyser.connect(state.masterGain);
+    dansBpmSynthPreview.context = context;
+    dansBpmSynthPreview.output = output;
+    dansBpmSynthPreview.analyser = analyser;
+    dansBpmSynthPreview.waveform = new Uint8Array(analyser.fftSize);
+  }
+
+  function stopDansBpmSynthPreview(dialog) {
+    const preview = dansBpmSynthPreview;
+    preview.playing = false;
+    preview.starting = false;
+    preview.startRequestId += 1;
+    if (preview.timerId !== null) window.clearInterval(preview.timerId);
+    preview.timerId = null;
+    if (preview.output && preview.context) {
+      const now = preview.context.currentTime;
+      preview.output.gain.cancelScheduledValues(now);
+      preview.output.gain.setTargetAtTime(0, now, 0.015);
+    }
+    const button = dialog?.querySelector("#dansbpm-synth-preview-button");
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Play preview";
+      button.setAttribute("aria-pressed", "false");
+    }
+  }
+
+  function toggleDansBpmSynthPreview(dialog) {
+    if (dansBpmSynthPreview.playing) {
+      stopDansBpmSynthPreview(dialog);
+      return;
+    }
+    if (dansBpmSynthPreview.starting) return;
+    const track = getDansBpmSynthTrack();
+    if (!track) {
+      showToast("Select the DansBPM Synth instrument to preview it.");
+      return;
+    }
+    dansBpmSynthPreview.starting = true;
+    const requestId = dansBpmSynthPreview.startRequestId + 1;
+    dansBpmSynthPreview.startRequestId = requestId;
+    const previewButton = dialog.querySelector("#dansbpm-synth-preview-button");
+    previewButton.disabled = true;
+    ensureAudio().then(() => {
+      const preview = dansBpmSynthPreview;
+      if (requestId !== preview.startRequestId) return;
+      preview.starting = false;
+      if (!dialog.open) return;
+      ensureDansBpmSynthPreviewAudio();
+      const context = state.audioContext;
+      preview.playing = true;
+      preview.noteIndex = 0;
+      preview.nextNoteTime = context.currentTime + 0.04;
+      preview.output.gain.cancelScheduledValues(context.currentTime);
+      preview.output.gain.setTargetAtTime(0.72, context.currentTime, 0.02);
+      const button = dialog.querySelector("#dansbpm-synth-preview-button");
+      button.disabled = false;
+      button.textContent = "Stop preview";
+      button.setAttribute("aria-pressed", "true");
+      const notes = [60, 64, 67, 72, 67, 64];
+      const schedulePreview = () => {
+        if (!preview.playing) return;
+        const currentTrack = getDansBpmSynthTrack();
+        if (!currentTrack) {
+          stopDansBpmSynthPreview(dialog);
+          return;
+        }
+        try {
+          while (preview.nextNoteTime < context.currentTime + 0.14) {
+            const noteDuration = 30 / state.bpm;
+            playInstrumentVoice(currentTrack, preview.nextNoteTime, notes[preview.noteIndex % notes.length],
+              noteDuration, 0.68, currentTrack, preview.output);
+            preview.noteIndex += 1;
+            preview.nextNoteTime += 60 / state.bpm / 2;
+          }
+        } catch (error) {
+          stopDansBpmSynthPreview(dialog);
+          showToast(`Synth preview stopped: ${error.message || "audio is unavailable"}`);
+        }
+      };
+      preview.timerId = window.setInterval(schedulePreview, 25);
+      schedulePreview();
+    }).catch((error) => {
+      if (requestId !== dansBpmSynthPreview.startRequestId) return;
+      dansBpmSynthPreview.starting = false;
+      stopDansBpmSynthPreview(dialog);
+      showToast(`Could not start synth preview: ${error.message || "audio is unavailable"}`);
+    });
+  }
+
+  function drawDansBpmSynthVisualizer(dialog) {
+    const preview = dansBpmSynthPreview;
+    const canvas = dialog.querySelector("#dansbpm-synth-visualizer");
+    const bounds = canvas.getBoundingClientRect();
+    const width = Math.max(1, bounds.width);
+    const height = Math.max(1, bounds.height);
+    const pixelRatio = Math.min(2, window.devicePixelRatio || 1);
+    const pixelWidth = Math.round(width * pixelRatio);
+    const pixelHeight = Math.round(height * pixelRatio);
+    if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+      canvas.width = pixelWidth;
+      canvas.height = pixelHeight;
+    }
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    context.fillStyle = "#141518";
+    context.fillRect(0, 0, width, height);
+    const center = height / 2;
+    context.strokeStyle = "#34363c";
+    context.lineWidth = 1;
+    context.beginPath();
+    context.moveTo(0, center);
+    context.lineTo(width, center);
+    context.stroke();
+    if (preview.analyser && preview.waveform) {
+      preview.analyser.getByteTimeDomainData(preview.waveform);
+      context.strokeStyle = "#d3f36b";
+      context.lineWidth = 1.5;
+      context.beginPath();
+      preview.waveform.forEach((value, index) => {
+        const x = index / (preview.waveform.length - 1) * width;
+        const y = (value - 128) / 128 * (height * 0.44) + center;
+        if (index === 0) context.moveTo(x, y);
+        else context.lineTo(x, y);
+      });
+      context.stroke();
+    }
+    if (dialog.open) {
+      preview.animationFrame = window.requestAnimationFrame(() => drawDansBpmSynthVisualizer(dialog));
+    } else {
+      preview.animationFrame = null;
+    }
+  }
+
   function createDansBpmSynthEditor() {
     const dialog = document.createElement("dialog");
     dialog.id = "dansbpm-synth-dialog";
@@ -1427,6 +1587,25 @@
     close.setAttribute("aria-label", "Close synth editor");
     close.addEventListener("click", () => dialog.close());
     heading.append(title, close);
+
+    const preview = document.createElement("section");
+    preview.className = "dansbpm-synth-preview";
+    const previewHeading = document.createElement("div");
+    previewHeading.className = "dansbpm-synth-preview-heading";
+    const previewButton = document.createElement("button");
+    previewButton.className = "export-button";
+    previewButton.id = "dansbpm-synth-preview-button";
+    previewButton.type = "button";
+    previewButton.textContent = "Play preview";
+    previewButton.setAttribute("aria-pressed", "false");
+    previewButton.addEventListener("click", () => toggleDansBpmSynthPreview(dialog));
+    const previewLabel = document.createElement("span");
+    previewLabel.textContent = "Live C-major arpeggio";
+    previewHeading.append(previewButton, previewLabel);
+    const visualizer = document.createElement("canvas");
+    visualizer.id = "dansbpm-synth-visualizer";
+    visualizer.setAttribute("aria-label", "Live DansBPM Synth waveform visualizer");
+    preview.append(previewHeading, visualizer);
 
     const controls = document.createElement("div");
     controls.className = "dansbpm-synth-controls";
@@ -1498,7 +1677,14 @@
       syncDansBpmSynthEditor(dialog, track);
       saveDansBpmSynthPatch(track);
     });
-    dialog.append(heading, controls, reset);
+    dialog.append(heading, preview, controls, reset);
+    dialog.addEventListener("close", () => {
+      stopDansBpmSynthPreview(dialog);
+      if (dansBpmSynthPreview.animationFrame !== null) {
+        window.cancelAnimationFrame(dansBpmSynthPreview.animationFrame);
+        dansBpmSynthPreview.animationFrame = null;
+      }
+    });
     dialog.addEventListener("click", (event) => {
       if (event.target === dialog) dialog.close();
     });
@@ -1522,6 +1708,7 @@
     dialog.dataset.trackId = track.id;
     syncDansBpmSynthEditor(dialog, track);
     dialog.showModal();
+    if (dansBpmSynthPreview.animationFrame === null) drawDansBpmSynthVisualizer(dialog);
   }
 
   function selectPianoInstrument(trackId) {
@@ -3395,6 +3582,7 @@
     "Low tom", "Mid tom", "High tom", "Low tom 2", "Tom", "Tom 2", "Crash", "Ride"];
   const djState = {
     activeDeck: "A",
+    arrangementStartTime: null,
     crossfader: 50,
     masterVolume: 1,
     masterLow: 0,
@@ -3838,7 +4026,71 @@
     drawDjLiveView();
   }
 
+  function drawDjArrangementRuler() {
+    const canvas = $("#dj-arrangement-ruler");
+    const bounds = canvas.getBoundingClientRect();
+    const width = Math.max(1, bounds.width);
+    const height = Math.max(1, bounds.height);
+    const pixelRatio = Math.min(2, window.devicePixelRatio || 1);
+    const pixelWidth = Math.round(width * pixelRatio);
+    const pixelHeight = Math.round(height * pixelRatio);
+    if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+      canvas.width = pixelWidth;
+      canvas.height = pixelHeight;
+    }
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    context.fillStyle = "#17181b";
+    context.fillRect(0, 0, width, height);
+
+    const now = state.audioContext?.currentTime || 0;
+    const barSeconds = 240 / state.bpm;
+    const visibleSpan = DJ_ARRANGEMENT_BARS * barSeconds;
+    const arrangementStart = djState.arrangementStartTime;
+    const start = Number.isFinite(arrangementStart)
+      ? Math.max(arrangementStart, now - visibleSpan * 0.75)
+      : Math.max(0, now - visibleSpan * 0.75);
+    const origin = Number.isFinite(arrangementStart) ? arrangementStart : start;
+    const timelineWidth = Math.max(1, width - 16);
+    const firstBar = Math.floor((start - origin) / barSeconds);
+    const lastBar = Math.ceil((start + visibleSpan - origin) / barSeconds);
+
+    context.font = "8px monospace";
+    context.textBaseline = "top";
+    for (let bar = firstBar; bar <= lastBar; bar += 1) {
+      const time = origin + bar * barSeconds;
+      const x = 8 + (time - start) / visibleSpan * timelineWidth;
+      if (x < 0 || x > width) continue;
+      context.strokeStyle = bar % 4 === 0 ? "#60636b" : "#3c3e44";
+      context.beginPath();
+      context.moveTo(x, 12);
+      context.lineTo(x, height);
+      context.stroke();
+      if (bar % 2 === 0) {
+        context.fillStyle = "#aeb0b6";
+        context.fillText(`BAR ${bar + 1}`, Math.min(width - 36, x + 3), 1);
+      }
+    }
+
+    const playheadX = 8 + Math.max(0, Math.min(1, (now - start) / visibleSpan)) * timelineWidth;
+    context.fillStyle = "#f3f5e8";
+    context.beginPath();
+    context.moveTo(playheadX - 4, 0);
+    context.lineTo(playheadX + 4, 0);
+    context.lineTo(playheadX, 5);
+    context.closePath();
+    context.fill();
+    context.strokeStyle = "#f3f5e8";
+    context.lineWidth = 2;
+    context.beginPath();
+    context.moveTo(playheadX, 5);
+    context.lineTo(playheadX, height);
+    context.stroke();
+  }
+
   function drawDjLiveView() {
+    drawDjArrangementRuler();
     DJ_DECK_IDS.forEach(updateDjDeckDisplays);
     document.querySelectorAll(".dj-live-timeline").forEach((canvas) => {
       const deckId = canvas.dataset.deck;
@@ -4030,7 +4282,12 @@
       const isLive = canvas.dataset.waveform === "live";
       const liveSpan = DJ_ARRANGEMENT_BARS * 240 / state.bpm;
       const visibleSpan = isLive ? liveSpan : isSong ? loopSpan : loopSpan * 2;
-      const start = isLive ? Math.max(0, now - visibleSpan * 0.75) : Math.max(0, position - visibleSpan * 0.75);
+      const arrangementStart = djState.arrangementStartTime;
+      const start = isLive
+        ? Number.isFinite(arrangementStart)
+          ? Math.max(arrangementStart, now - visibleSpan * 0.75)
+          : Math.max(0, now - visibleSpan * 0.75)
+        : Math.max(0, position - visibleSpan * 0.75);
       const playheadPosition = isLive ? now : position;
       const liveStartTime = Number.isFinite(deck.dragPreviewStartTime)
         ? deck.dragPreviewStartTime
@@ -4123,7 +4380,7 @@
       }
       const playheadX = 8 + Math.max(0, Math.min(1, (playheadPosition - start) / visibleSpan)) * timelineWidth;
       context.strokeStyle = "#f3f5e8";
-      context.lineWidth = 1.5;
+      context.lineWidth = isLive ? 2 : 1.5;
       context.beginPath();
       context.moveTo(playheadX, 1);
       context.lineTo(playheadX, height - 1);
@@ -4365,6 +4622,7 @@
     deck.songGains.clear();
     deck.songEvents.clear();
     deck.playing = false;
+    if (!DJ_DECK_IDS.some((id) => djState.decks[id].playing)) djState.arrangementStartTime = null;
     updateDjDeckUI(deckId);
     refreshDjVisualTimer();
   }
@@ -4381,7 +4639,11 @@
       if (source.type === "song") await loadLibrarySamplesForPlayback("arrangement");
       ensureDjDeckAudio(deck);
       const syncedStart = deck.syncedStartTime > 0;
-      const startTime = Math.max(state.audioContext.currentTime + 0.04, deck.syncedStartTime || 0) +
+      const baseStartTime = Math.max(state.audioContext.currentTime + 0.04, deck.syncedStartTime || 0);
+      if (!DJ_DECK_IDS.some((id) => djState.decks[id].playing)) {
+        djState.arrangementStartTime = baseStartTime;
+      }
+      const startTime = baseStartTime +
         (syncedStart ? 0 : deck.startOffsetBars * 240 / state.bpm);
       deck.syncedStartTime = 0;
       deck.dragPreviewStartTime = null;

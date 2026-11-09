@@ -441,14 +441,19 @@
                         <div class="dj-section-heading">
                           <div>
                             <h2 id="dj-arrangement-title">Arrangement</h2>
+                            <p>Drag either deck waveform to move it; the playhead follows playback.</p>
                           </div>
                         </div>
                         <div class="dj-live-deck-view" id="dj-live-deck-view">
-                          <div class="dj-live-waveform-row" data-deck="A">
+                          <div class="dj-live-ruler" aria-label="Arrangement time ruler">
+                            <span>TIME<small>BAR</small></span>
+                            <canvas id="dj-arrangement-ruler" aria-hidden="true"></canvas>
+                          </div>
+                          <div class="dj-live-waveform-row" data-deck="A" title="Drag to move Deck A in the arrangement">
                             <span>DECK A <output id="dj-live-offset-a">+0 bars</output></span>
                             <canvas class="dj-waveform dj-live-waveform" id="dj-live-waveform-a" data-deck="A" data-waveform="live" aria-label="Deck A live waveform"></canvas>
                           </div>
-                          <div class="dj-live-waveform-row" data-deck="B">
+                          <div class="dj-live-waveform-row" data-deck="B" title="Drag to move Deck B in the arrangement">
                             <span>DECK B <output id="dj-live-offset-b">+0 bars</output></span>
                             <canvas class="dj-waveform dj-live-waveform" id="dj-live-waveform-b" data-deck="B" data-waveform="live" aria-label="Deck B live waveform"></canvas>
                           </div>
