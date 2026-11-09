@@ -664,14 +664,12 @@ kbd { border: 1px solid #393a3f; border-radius: 3px; padding: 2px 4px; color: #b
 .dj-live-track, .dj-cue-slots, .dj-pads { margin-top: 16px; }
 .dj-section-heading { margin-bottom: 8px; }
 .dj-section-heading p { margin: 3px 0 0; color: #85868b; font-size: 9px; }
-.dj-live-deck-view { display: grid; gap: 8px; }
-.dj-live-deck-row { min-width: 0; overflow: hidden; border: 1px solid #34353a; border-radius: 6px; background: #17181b; }
-.dj-live-deck-row-heading { display: flex; align-items: baseline; gap: 8px; border-bottom: 1px solid #303136; padding: 6px 9px; }
-.dj-live-deck-row-heading strong { color: var(--accent); font-family: var(--mono); font-size: 8px; }
-.dj-live-deck-row-heading span { overflow: hidden; color: #b7b8bd; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
-.dj-live-timeline { display: block; width: 100%; }
-.dj-live-empty { padding: 14px; color: #77787e; font-size: 9px; }
-.dj-live-timeline-note { margin: 5px 2px 0; color: #77787e; font-size: 8px; }
+.dj-live-deck-view { display: grid; gap: 7px; }
+.dj-live-waveform-row { display: grid; grid-template-columns: 48px minmax(0, 1fr); align-items: center; gap: 8px; border: 1px solid #34353a; border-radius: 6px; background: #17181b; padding: 6px 8px; }
+.dj-live-waveform-row > span { color: var(--accent); font-family: var(--mono); font-size: 8px; }
+.dj-waveform { display: block; width: 100%; border-radius: 4px; background: #121316; }
+.dj-deck-waveform { height: 46px; margin: 8px 0; }
+.dj-live-waveform { height: 66px; }
 .dj-live-slots { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; }
 .dj-live-slot-wrap { position: relative; min-width: 0; }
 .dj-live-slot { position: relative; min-width: 0; min-height: 48px; border: 1px solid #36373c; border-radius: 6px; background: #202125; padding: 6px 20px 6px 7px; color: #c9cac6; text-align: left; cursor: pointer; }

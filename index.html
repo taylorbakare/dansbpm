@@ -332,6 +332,7 @@
                           </div>
                           <label class="dj-source-control" for="dj-source-a">LIVE SOURCE</label>
                           <select id="dj-source-a" aria-label="Deck A source"></select>
+                          <canvas class="dj-waveform dj-deck-waveform" id="dj-deck-waveform-a" data-deck="A" data-waveform="deck" aria-label="Deck A scrolling waveform"></canvas>
                           <div class="dj-deck-stage">
                             <div class="dj-platter" id="dj-platter-a" role="button" tabindex="0" aria-label="Scratch Deck A platter">
                               <div class="dj-platter-label"><strong>A</strong><span id="dj-time-a">00:00</span></div>
@@ -359,6 +360,7 @@
                           </div>
                           <label class="dj-source-control" for="dj-source-b">LIVE SOURCE</label>
                           <select id="dj-source-b" aria-label="Deck B source"></select>
+                          <canvas class="dj-waveform dj-deck-waveform" id="dj-deck-waveform-b" data-deck="B" data-waveform="deck" aria-label="Deck B scrolling waveform"></canvas>
                           <div class="dj-deck-stage">
                             <div class="dj-platter" id="dj-platter-b" role="button" tabindex="0" aria-label="Scratch Deck B platter">
                               <div class="dj-platter-label"><strong>B</strong><span id="dj-time-b">00:00</span></div>
@@ -384,10 +386,18 @@
                         <div class="dj-section-heading">
                           <div>
                             <h2 id="dj-live-track-title">Live Track</h2>
-                            <p>Deck tracks are stacked here; the timeline scrolls as each deck plays.</p>
                           </div>
                         </div>
-                        <div class="dj-live-deck-view" id="dj-live-deck-view"></div>
+                        <div class="dj-live-deck-view" id="dj-live-deck-view">
+                          <div class="dj-live-waveform-row">
+                            <span>DECK A</span>
+                            <canvas class="dj-waveform dj-live-waveform" id="dj-live-waveform-a" data-deck="A" data-waveform="live" aria-label="Deck A live waveform"></canvas>
+                          </div>
+                          <div class="dj-live-waveform-row">
+                            <span>DECK B</span>
+                            <canvas class="dj-waveform dj-live-waveform" id="dj-live-waveform-b" data-deck="B" data-waveform="live" aria-label="Deck B live waveform"></canvas>
+                          </div>
+                        </div>
                       </section>
                       <section class="dj-cue-slots" aria-labelledby="dj-cue-slots-title">
                         <div class="dj-section-heading">
