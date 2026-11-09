@@ -917,8 +917,8 @@ body:has(#dj-view:not([hidden])).is-dj-expanded .app-shell:fullscreen {
   background: #141518;
 }
 body:has(#dj-view:not([hidden])).is-dj-expanded > .app-shell > .topbar,
-body:has(#dj-view:not([hidden])).is-dj-expanded > .app-shell > .transport-panel,
-body:has(#dj-view:not([hidden])).is-dj-expanded > .app-shell > .workspace-tabs,
+body:has(#dj-view:not([hidden])).is-dj-expanded > .app-shell > main > .transport-panel,
+body:has(#dj-view:not([hidden])).is-dj-expanded > .app-shell > main > .workspace-tabs,
 body:has(#dj-view:not([hidden])).is-dj-expanded .workspace-area-heading,
 body:has(#dj-view:not([hidden])).is-dj-expanded .arrangement-heading,
 body:has(#dj-view:not([hidden])).is-dj-expanded #view-resizer,
@@ -928,7 +928,7 @@ body:has(#dj-view:not([hidden])).is-dj-expanded #arrangement-track-context-menu 
 body:has(#dj-view:not([hidden])).is-dj-expanded main {
   display: flex;
   min-height: 0;
-  height: 100dvh;
+  height: 100%;
   flex: 1;
 }
 body:has(#dj-view:not([hidden])).is-dj-expanded #arrangement-view,
@@ -939,6 +939,7 @@ body:has(#dj-view:not([hidden])).is-dj-expanded #workspace-area,
 body:has(#dj-view:not([hidden])).is-dj-expanded .workspace-content { min-height: 0; height: 100%; }
 body:has(#dj-view:not([hidden])).is-dj-expanded #arrangement-card,
 body:has(#dj-view:not([hidden])).is-dj-expanded #arrangement-main { flex: 1; }
+body:has(#dj-view:not([hidden])).is-dj-expanded #arrangement-view { min-height: 0; height: 100%; flex: 1; }
 body:has(#dj-view:not([hidden])).is-dj-expanded #arrangement-card { border-radius: 0; }
 body:has(#dj-view:not([hidden])).is-dj-expanded #arrangement-main { grid-template-rows: minmax(0, 1fr); }
 body:has(#dj-view:not([hidden])).is-dj-expanded #workspace-area { grid-row: 1; border: 0; }
