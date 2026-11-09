@@ -1951,6 +1951,13 @@
       : null;
     const clickedSelectedArrangementItem = arrangementItem && state.selectedArrangementItems.has(
       arrangementSelectionKey(arrangementItem.dataset.selectableType, arrangementItem.dataset.clipId));
+    const clickedTrackViewSurface = target instanceof Element &&
+      target.closest("#timeline-scroll, #arrangement-track-labels");
+    if (state.selectedArrangementItems.size && clickedTrackViewSurface && !clickedSelectedArrangementItem) {
+      state.selectedArrangementItems.clear();
+      state.arrangementSelectionFromMarquee = false;
+      updateArrangementSelection();
+    }
     if (state.arrangementSelectionFromMarquee && !clickedSelectedArrangementItem) {
       state.selectedArrangementItems.clear();
       state.arrangementSelectionFromMarquee = false;
