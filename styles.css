@@ -411,7 +411,7 @@ kbd { border: 1px solid #393a3f; border-radius: 3px; padding: 2px 4px; color: #b
 .piano-roll-key.is-black { background: #38393d; color: #ddd; }
 .piano-roll-key.is-octave { color: #9aab63; font-weight: 700; }
 .piano-roll-editor { position: relative; flex: 0 0 auto; }
-.piano-roll-ruler { height: 28px; display: flex; background: #202125; }
+.piano-roll-ruler { position: sticky; top: 0; z-index: 5; height: 28px; display: flex; background: #202125; }
 .piano-roll-bar { width: var(--piano-bar-width, 512px); flex: 0 0 var(--piano-bar-width, 512px); display: grid; grid-template-columns: repeat(4, var(--piano-beat-width, 128px)); border-right: 1px solid #54565b; color: #aaa; font-family: var(--mono); font-size: 8px; }
 .piano-roll-bar > span { display: flex; align-items: center; border-right: 1px solid #333439; padding-left: 5px; }
 .piano-roll-bar > span:first-child { color: var(--accent); }
