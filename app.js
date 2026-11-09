@@ -3383,6 +3383,13 @@
   const DJ_MAX_OFFSET_BARS = 2;
   const DJ_PAD_KEYS = ["KeyQ", "KeyW", "KeyE", "KeyR", "KeyA", "KeyS", "KeyD", "KeyF",
     "KeyZ", "KeyX", "KeyC", "KeyV", "Digit1", "Digit2", "Digit3", "Digit4"];
+  const DJ_KNOB_KEYS = {
+    KeyU: "filter",
+    KeyI: "low",
+    KeyO: "mid",
+    KeyP: "high",
+    Backslash: "volume",
+  };
   const DJ_PAD_NOTES = [36, 39, 42, 46, 37, 38, 40, 44, 41, 43, 45, 47, 48, 50, 49, 51];
   const DJ_PAD_NAMES = ["Kick", "Clap", "Closed hat", "Open hat", "Rim", "Snare", "Snare 2", "Pedal hat",
     "Low tom", "Mid tom", "High tom", "Low tom 2", "Tom", "Tom 2", "Crash", "Ride"];
@@ -3403,11 +3410,17 @@
   let djVisualTimer = null;
   let djViewExpanded = false;
   let djMasterChain = null;
+  const djHeldKeys = new Set();
+  const djDeckChordUsed = new Set();
   const reversedDjBuffers = new WeakMap();
 
   function setDjViewExpanded(expanded, restoreFocus = true) {
     if (expanded && state.view !== "dj") return;
     djViewExpanded = expanded;
+    if (!expanded) {
+      djHeldKeys.clear();
+      djDeckChordUsed.clear();
+    }
     document.body.classList.toggle("is-dj-expanded", expanded);
     if (expanded) {
       const shell = document.querySelector(".app-shell");
@@ -4777,12 +4790,103 @@
     }
   }
 
+  function getDjKnobInputId(knob, deckId) {
+    if (deckId) {
+      const suffix = deckId.toLowerCase();
+      return {
+        filter: `dj-filter-${suffix}`,
+        low: `dj-eq-low-${suffix}`,
+        mid: `dj-eq-mid-${suffix}`,
+        high: `dj-eq-high-${suffix}`,
+        volume: `dj-volume-${suffix}`,
+      }[knob];
+    }
+    return {
+      filter: "dj-master-filter",
+      low: "dj-master-low",
+      mid: "dj-master-mid",
+      high: "dj-master-high",
+      volume: "dj-master-volume",
+    }[knob];
+  }
+
+  function adjustDjKnobFromKeyboard(knobKey, direction, deckId) {
+    const input = $(`#${getDjKnobInputId(DJ_KNOB_KEYS[knobKey], deckId)}`);
+    const min = Number(input.min) || 0;
+    const max = Number(input.max) || 100;
+    const step = Number(input.step) || 1;
+    const value = Math.max(min, Math.min(max, Number(input.value) + direction * step));
+    if (value === Number(input.value)) return;
+    input.value = String(value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  function handleDjKeyup(event) {
+    const isDeckSelector = event.code === "BracketLeft" || event.code === "BracketRight";
+    const djControlFocused = event.target instanceof Element &&
+      event.target.closest("input, select, textarea, [contenteditable='true']");
+    const shouldToggleDeck = isDeckSelector && djViewExpanded && state.view === "dj" &&
+      djHeldKeys.has(event.code) && !djDeckChordUsed.has(event.code) &&
+      !djControlFocused && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey &&
+      !$("#help-dialog").open && !$("#project-dialog").open &&
+      !$("#source-browser-dialog").open && !$("#step-instrument-dialog").open &&
+      !$("#step-track-mix-dialog").open;
+    djHeldKeys.delete(event.code);
+    const chordUsed = djDeckChordUsed.has(event.code);
+    djDeckChordUsed.delete(event.code);
+    if (shouldToggleDeck) {
+      event.preventDefault();
+      event.stopPropagation();
+      const deckId = event.code === "BracketLeft" ? "A" : "B";
+      setActiveDjDeck(deckId);
+      toggleDjDeck(deckId);
+    } else if (chordUsed) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }
+
   function handleDjKeydown(event) {
     if (state.view !== "dj") return;
+    if (djViewExpanded) {
+      djHeldKeys.add(event.code);
+      if ((event.code === "BracketLeft" || event.code === "BracketRight") &&
+        (event.shiftKey || event.ctrlKey || event.altKey || event.metaKey)) {
+        djDeckChordUsed.add(event.code);
+      }
+      const selectors = ["BracketLeft", "BracketRight"].filter((code) => djHeldKeys.has(code));
+      const knobKeyHeld = Object.keys(DJ_KNOB_KEYS).some((code) => djHeldKeys.has(code));
+      if (selectors.length > 1 || (selectors.length && knobKeyHeld)) {
+        selectors.forEach((code) => djDeckChordUsed.add(code));
+      }
+    } else {
+      djHeldKeys.clear();
+      djDeckChordUsed.clear();
+    }
     const dialogOpen = $("#help-dialog").open || $("#project-dialog").open || $("#source-browser-dialog").open ||
       $("#step-instrument-dialog").open || $("#step-track-mix-dialog").open;
     const djControlFocused = event.target instanceof Element &&
       event.target.closest("input, select, textarea, [contenteditable='true']");
+    if (djViewExpanded && !dialogOpen && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey &&
+      (event.code === "ArrowUp" || event.code === "ArrowDown")) {
+      const selectors = ["BracketLeft", "BracketRight"].filter((code) => djHeldKeys.has(code));
+      const knobKeys = Object.keys(DJ_KNOB_KEYS).filter((code) => djHeldKeys.has(code));
+      if (selectors.length <= 1 && knobKeys.length === 1) {
+        const deckId = selectors[0] === "BracketLeft" ? "A" : selectors[0] === "BracketRight" ? "B" : null;
+        selectors.forEach((code) => djDeckChordUsed.add(code));
+        adjustDjKnobFromKeyboard(knobKeys[0], event.code === "ArrowUp" ? 1 : -1, deckId);
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+    }
+    if (djViewExpanded && !dialogOpen && DJ_KNOB_KEYS[event.code] &&
+      !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     if (djViewExpanded && event.code === "Escape" && !dialogOpen && !djControlFocused) {
       event.preventDefault();
       setDjViewExpanded(false);
@@ -4811,9 +4915,9 @@
     } else if (event.code === "Space") {
       if (!event.repeat) toggleDjDeck(djState.activeDeck);
     } else if (event.code === "BracketLeft") {
-      setActiveDjDeck("A");
+      if (!djViewExpanded) setActiveDjDeck("A");
     } else if (event.code === "BracketRight") {
-      setActiveDjDeck("B");
+      if (!djViewExpanded) setActiveDjDeck("B");
     } else if (event.code === "KeyY") {
       if (!event.repeat) syncDjDeck(djState.activeDeck);
     } else if (event.code === "Comma") {
@@ -5041,6 +5145,11 @@
       if (pad) playDjPad(Number(pad.dataset.pad));
     });
     document.addEventListener("keydown", handleDjKeydown, true);
+    document.addEventListener("keyup", handleDjKeyup, true);
+    window.addEventListener("blur", () => {
+      djHeldKeys.clear();
+      djDeckChordUsed.clear();
+    });
   }
 
   function getTrackStepTime(track, step, pattern, time) {
