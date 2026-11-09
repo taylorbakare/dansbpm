@@ -57,6 +57,8 @@ body.is-exporting .app-shell { cursor: wait; opacity: .7; pointer-events: none; 
 .export-button { height: 34px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid #3c3e42; border-radius: 7px; background: #222327; color: #e4e4e1; font-size: 11px; font-weight: 600; cursor: pointer; }
 .export-button:hover { border-color: #606251; background: #292a2b; }
 .export-button:disabled { cursor: wait; opacity: .65; }
+.topbar-save-button { border-color: #687641; background: var(--accent-soft); color: var(--accent); }
+.topbar-save-button:hover { border-color: var(--accent); background: rgba(211,243,107,.14); }
 .export-button svg, .quiet-button svg, .metronome-button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 
 .transport-panel { height: 82px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--stroke-soft); }

@@ -8590,6 +8590,7 @@
     });
     $("#project-dialog-close").addEventListener("click", () => $("#project-dialog").close());
     $("#save-project-button").addEventListener("click", saveProjectNow);
+    $("#top-save-project-button").addEventListener("click", saveProjectNow);
     $("#rename-project-button").addEventListener("click", renameProject);
     $("#new-project-button").addEventListener("click", createProject);
     $("#switch-user-button").addEventListener("click", switchUser);
