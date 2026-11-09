@@ -4774,10 +4774,10 @@
   }
 
   function renderSoundSearchSuggestions(query) {
-    const results = $("#topbar-sound-search-results");
+    const results = $("#sound-library-search-results");
     results.replaceChildren();
     const normalizedQuery = normalizeSoundSearch(query);
-    const input = $("#topbar-sound-search-input");
+    const input = $("#sound-library-search-input");
     if (!normalizedQuery) {
       results.hidden = true;
       input.setAttribute("aria-expanded", "false");
@@ -4794,21 +4794,23 @@
     const matchingInstruments = instruments.filter((track) => matchesInstrumentSearch(track, query)).slice(0, 7);
     const addHeading = (text) => {
       const heading = document.createElement("div");
-      heading.className = "topbar-search-heading";
+      heading.className = "sound-library-search-heading";
       heading.textContent = text;
       results.append(heading);
     };
-    const addResult = (title, detail, searchQuery) => {
+    const addResult = (title, detail, searchQuery, type, soundId = "") => {
       const button = document.createElement("button");
-      button.className = "topbar-search-result";
+      button.className = "sound-library-search-result";
       button.type = "button";
       button.dataset.searchQuery = searchQuery;
+      button.dataset.searchType = type;
+      if (soundId) button.dataset.soundId = soundId;
       button.setAttribute("role", "option");
       const name = document.createElement("span");
-      name.className = "topbar-search-result-name";
+      name.className = "sound-library-search-result-name";
       name.textContent = title;
       const description = document.createElement("span");
-      description.className = "topbar-search-result-detail";
+      description.className = "sound-library-search-result-detail";
       description.textContent = detail;
       button.append(name, description);
       results.append(button);
@@ -4819,23 +4821,41 @@
       matchingCategories.forEach((category) => {
         const count = instruments.filter((track) =>
           track.family === category || getInstrumentCategory(track) === category).length;
-        addResult(category, `${count} sound${count === 1 ? "" : "s"}`, category);
+        addResult(category, `${count} sound${count === 1 ? "" : "s"}`, category, "category");
       });
     }
     if (matchingInstruments.length) {
       addHeading("SOUNDS");
       matchingInstruments.forEach((track) => {
-        addResult(track.name, [track.family, getInstrumentCategory(track)].filter(Boolean).join(" · "), track.name);
+        addResult(track.name, [track.family, getInstrumentCategory(track)].filter(Boolean).join(" · "), track.name, "sound", track.id);
       });
     }
     if (!matchingCategories.length && !matchingInstruments.length) {
       const empty = document.createElement("div");
-      empty.className = "topbar-search-empty";
+      empty.className = "sound-library-search-empty";
       empty.textContent = "No matching sounds or categories. Press Enter to search the library.";
       results.append(empty);
     }
     results.hidden = false;
     input.setAttribute("aria-expanded", "true");
+  }
+
+  function navigateToSoundSearchResult(result) {
+    const query = result.dataset.searchQuery || "";
+    $("#sound-library-search-input").value = query;
+    renderSoundSearchSuggestions("");
+    renderInstrumentBrowser(query);
+    window.requestAnimationFrame(() => {
+      const target = result.dataset.searchType === "sound"
+        ? Array.from(document.querySelectorAll(".instrument-source")).find((row) =>
+          row.dataset.soundId === result.dataset.soundId)
+        : Array.from(document.querySelectorAll(".instrument-family-group, .instrument-kind-group")).find((group) =>
+          group.dataset.family === query || group.dataset.category === query);
+      if (!target) return;
+      target.scrollIntoView({ block: "start", behavior: "smooth" });
+      target.classList.add("is-search-target");
+      window.setTimeout(() => target.classList.remove("is-search-target"), 1200);
+    });
   }
 
   function renderInstrumentBrowser(query = "") {
@@ -4858,6 +4878,7 @@
       if (!familyGroup) {
         familyGroup = document.createElement("section");
         familyGroup.className = "instrument-family-group";
+        familyGroup.dataset.family = family;
         const heading = document.createElement("h3");
         heading.className = "instrument-family-heading";
         heading.textContent = family;
@@ -4875,6 +4896,7 @@
           subsection = document.createElement("section");
           subsection.className = "instrument-kind-group";
           subsection.dataset.subsection = subsectionKey;
+          subsection.dataset.category = kind;
           const heading = document.createElement("h4");
           heading.className = "instrument-kind-heading";
           heading.textContent = kind;
@@ -4886,6 +4908,7 @@
 
       const row = document.createElement("div");
       row.className = "instrument-source";
+      row.dataset.soundId = track.id;
       const color = document.createElement("span");
       color.className = "source-color";
       color.style.background = track.color;
@@ -5009,7 +5032,7 @@
     captureCurrentMel();
     renderArrangementAssetBrowser();
     renderRecordingBrowser();
-    $("#topbar-sound-search-input").value = query;
+    $("#sound-library-search-input").value = query;
     renderSoundSearchSuggestions("");
     renderInstrumentBrowser(query);
     const dialog = $("#source-browser-dialog");
@@ -8584,35 +8607,39 @@
     });
     $("#assets-button").addEventListener("click", () => openAssetLibrary());
     $("#sequencer-browser-button").addEventListener("click", () => openAssetLibrary());
-    const soundSearchInput = $("#topbar-sound-search-input");
+    const soundSearchInput = $("#sound-library-search-input");
     soundSearchInput.addEventListener("input", () => {
       renderSoundSearchSuggestions(soundSearchInput.value);
-      if ($("#source-browser-dialog").open) renderInstrumentBrowser(soundSearchInput.value);
+      renderInstrumentBrowser(soundSearchInput.value);
     });
     soundSearchInput.addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
         event.preventDefault();
-        openAssetLibrary(soundSearchInput.value.trim());
+        const firstResult = $("#sound-library-search-results").querySelector(".sound-library-search-result");
+        if (firstResult instanceof HTMLButtonElement) navigateToSoundSearchResult(firstResult);
+        else {
+          renderSoundSearchSuggestions("");
+          renderInstrumentBrowser(soundSearchInput.value.trim());
+        }
       } else if (event.key === "Escape") {
         renderSoundSearchSuggestions("");
         soundSearchInput.blur();
       } else if (event.key === "ArrowDown") {
-        const firstResult = $("#topbar-sound-search-results").querySelector(".topbar-search-result");
+        const firstResult = $("#sound-library-search-results").querySelector(".sound-library-search-result");
         if (firstResult) {
           event.preventDefault();
           firstResult.focus();
         }
       }
     });
-    $("#topbar-sound-search-results").addEventListener("click", (event) => {
+    $("#sound-library-search-results").addEventListener("click", (event) => {
       const result = event.target instanceof Element
-        ? event.target.closest("[data-search-query]")
+        ? event.target.closest(".sound-library-search-result")
         : null;
-      if (!result) return;
-      openAssetLibrary(result.dataset.searchQuery || "");
+      if (result instanceof HTMLButtonElement) navigateToSoundSearchResult(result);
     });
     document.addEventListener("pointerdown", (event) => {
-      const search = $("#topbar-sound-search");
+      const search = $("#sound-library-search");
       if (event.target instanceof Node && !search.contains(event.target)) {
         renderSoundSearchSuggestions("");
       }

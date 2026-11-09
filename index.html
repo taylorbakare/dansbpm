@@ -39,13 +39,6 @@
             <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v9m0 0 3.5-3.5M10 12 6.5 8.5M4 13v3h12v-3" /></svg>
             Export pattern
           </button>
-          <div class="topbar-sound-search" id="topbar-sound-search">
-            <div class="topbar-sound-search-control">
-              <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" /><path d="m13 13 4 4" /></svg>
-              <input id="topbar-sound-search-input" type="search" placeholder="Search sounds or categories" autocomplete="off" aria-label="Search sounds, categories, or keywords" aria-controls="topbar-sound-search-results" aria-expanded="false">
-            </div>
-            <div class="topbar-sound-search-results" id="topbar-sound-search-results" role="listbox" aria-label="Sound search results" hidden></div>
-          </div>
           <button class="export-button topbar-save-button" id="top-save-project-button" type="button" aria-label="Save project" title="Save project">
             <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 3h10l3 3v11H3V3h1Zm2 0v5h8V3M6 17v-6h8v6" /></svg>
             <span>Save</span>
@@ -355,6 +348,14 @@
         <dialog class="source-browser-dialog" id="source-browser-dialog" aria-label="Asset library">
           <aside class="source-sidebar">
             <div class="source-sidebar-heading">ASSET LIBRARY <button id="source-browser-close" type="button" aria-label="Close asset library">×</button></div>
+            <div class="sound-library-search" id="sound-library-search">
+              <label class="sound-library-search-label" for="sound-library-search-input">SEARCH SOUNDS &amp; CATEGORIES</label>
+              <div class="sound-library-search-control">
+                <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" /><path d="m13 13 4 4" /></svg>
+                <input id="sound-library-search-input" type="search" placeholder="Try kick, guitar, or live" autocomplete="off" aria-label="Search sounds, categories, or keywords" aria-controls="sound-library-search-results" aria-expanded="false">
+              </div>
+              <div class="sound-library-search-results" id="sound-library-search-results" role="listbox" aria-label="Sound search results" hidden></div>
+            </div>
             <div class="source-section-label">PATTERNS <span id="pattern-asset-count">0</span></div>
             <div class="asset-browser" id="pattern-asset-browser"></div>
             <div class="source-section-label">MELS <span id="mel-asset-count">0</span></div>
