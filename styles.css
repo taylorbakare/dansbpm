@@ -428,6 +428,7 @@ kbd { border: 1px solid #393a3f; border-radius: 3px; padding: 2px 4px; color: #b
 .sound-duration-control > span { display: flex; justify-content: space-between; }
 .sound-duration-control output { color: #92949a; font-family: var(--mono); }
 .sound-duration-control input { width: 100%; margin: 0; accent-color: var(--accent); }
+.sound-duration-actions { display: flex; justify-content: flex-end; gap: 6px; }
 .piano-roll-footer { flex: 0 0 auto; color: #77787e; font-family: var(--mono); font-size: 8px; }
 
 @media (max-width: 760px) {

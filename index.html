@@ -365,7 +365,10 @@
             <span>Duration <output id="sound-duration-value">100%</output></span>
             <input id="sound-duration-slider" type="range" min="1" max="100" step="1" value="100" aria-label="Sound duration">
           </label>
-          <button class="quiet-button" id="sound-duration-reset" type="button">Revert duration</button>
+          <div class="sound-duration-actions">
+            <button class="quiet-button" id="sound-duration-play" type="button">Play</button>
+            <button class="quiet-button" id="sound-duration-reset" type="button">Revert duration</button>
+          </div>
         </div>
         <dialog class="step-instrument-dialog" id="step-instrument-dialog" aria-labelledby="step-instrument-title">
           <div class="step-dialog-heading">

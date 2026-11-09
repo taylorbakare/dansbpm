@@ -2064,6 +2064,7 @@
     const menu = $("#sound-duration-menu");
     menu.hidden = true;
     delete menu.dataset.soundId;
+    delete menu.dataset.trackId;
   }
 
   function openSoundDurationMenu(track, event) {
@@ -2078,6 +2079,7 @@
     $("#sound-duration-title").textContent = track.name;
     $("#sound-duration-value").textContent = `${slider.value}%`;
     menu.dataset.soundId = soundId;
+    menu.dataset.trackId = track.id;
     menu.hidden = false;
     const bounds = dialog?.getBoundingClientRect() || {
       left: 0, right: window.innerWidth, top: 0, bottom: window.innerHeight,
@@ -8212,6 +8214,14 @@
     $("#sequencer-browser-button").addEventListener("click", openAssetLibrary);
     $("#sound-duration-slider").addEventListener("input", (event) => {
       setSoundDurationFromMenu(Number(event.currentTarget.value));
+    });
+    $("#sound-duration-play").addEventListener("click", () => {
+      const track = state.tracks.find((item) => item.id === $("#sound-duration-menu").dataset.trackId);
+      if (!track) {
+        showToast("This sound is no longer available.");
+        return;
+      }
+      previewInstrumentSound(track);
     });
     $("#sound-duration-reset").addEventListener("click", () => {
       $("#sound-duration-slider").value = "100";
