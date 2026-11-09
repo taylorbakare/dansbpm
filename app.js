@@ -4096,7 +4096,7 @@
       positionBar > viewStartBar + DJ_ARRANGEMENT_BARS + 0.001) return;
     const followThreshold = viewStartBar + DJ_ARRANGEMENT_BARS - 1;
     if (positionBar < followThreshold) return;
-    const targetViewStartBar = Math.floor((positionBar - (DJ_ARRANGEMENT_BARS - 1)) * 4 + 0.0001) / 4;
+    const targetViewStartBar = positionBar - (DJ_ARRANGEMENT_BARS - 1);
     const nextViewStartBar = Math.min(DJ_MAX_OFFSET_BARS,
       Math.max(viewStartBar, targetViewStartBar));
     if (nextViewStartBar <= viewStartBar) return;
@@ -4512,7 +4512,10 @@
     const suffix = deckId.toLowerCase();
     const source = getDjSource(deck.sourceKey);
     $(`#dj-deck-${suffix}`).classList.toggle("is-active", djState.activeDeck === deckId);
+    $(`#dj-deck-${suffix}`).classList.toggle("is-playing", deck.playing);
     $(`#dj-focus-${suffix}`).setAttribute("aria-pressed", String(djState.activeDeck === deckId));
+    document.querySelector(`.dj-live-waveform-row[data-deck="${deckId}"]`)
+      ?.classList.toggle("is-playing", deck.playing);
     const playButton = $(`#dj-play-${suffix}`);
     playButton.textContent = deck.playing ? "Pause" : "Play";
     playButton.classList.toggle("is-playing", deck.playing);
