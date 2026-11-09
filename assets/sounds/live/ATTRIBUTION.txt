@@ -1,0 +1,12 @@
+Live sample recordings
+
+Source: OLPC Berklee Sound Library
+Source page: https://wiki.laptop.org/go/Sound_samples
+License: Creative Commons Attribution 3.0 Unported (CC BY 3.0)
+License URL: https://creativecommons.org/licenses/by/3.0/
+
+The recordings are bundled from the Tone.js audio collection:
+https://github.com/Tonejs/audio/tree/efd8296360f9526e379bfbe5c1698ff54d6a1d34/berklee
+That collection identifies these recordings as files from the OLPC Berklee Sound Library licensed under CC BY 3.0.
+
+The audio files are included unchanged. The application adds library labels and sample playback metadata.

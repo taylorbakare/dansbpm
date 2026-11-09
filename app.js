@@ -241,12 +241,96 @@
     { id: "bass-sub", name: "Sub Bass", kind: "instrument", family: "Bass", color: "#78a6d4", volume: 0.72, patch: { wave: "sine", cutoff: 420, attack: 0.01, decay: 0.2, sustain: 0.48, release: 0.16 } },
     { id: "bass-fuzz", name: "Fuzz Bass", kind: "instrument", family: "Bass", color: "#d47e78", volume: 0.68, patch: { wave: "sawtooth", cutoff: 1500, attack: 0.004, decay: 0.18, sustain: 0.32, release: 0.12, detune: 5 } },
   ];
+  function makeLiveSampleTracks(family, category, color, entries) {
+    return entries.map(([id, name, file, rootMidi]) => ({
+      id: `${family.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${id}`,
+      name,
+      kind: "sample",
+      family,
+      sampleCategory: category,
+      sampleUrl: `assets/sounds/live/${file}`,
+      sampleRootMidi: rootMidi,
+      sampleHumanized: true,
+      sampleOneShot: true,
+      subtitle: "Recorded live performance",
+      color,
+      volume: 0.68,
+    }));
+  }
+  const LIVE_SAMPLE_TRACKS = [
+    ...makeLiveSampleTracks("Live Drums", "Claps", "#e58b7a", [
+      ["clap-1", "Studio Clap Take 1", "Clap1.mp3", 60],
+      ["clap-2", "Studio Clap Take 2", "Clap2.mp3", 60],
+      ["clap-3", "Studio Clap Take 3", "Clap3.mp3", 60],
+      ["clap-4", "Hand Clap", "clap_1.mp3", 60],
+    ]),
+    ...makeLiveSampleTracks("Live Drums", "Congas", "#d09bdb", [
+      ["conga-1", "Conga Slap 1", "conga_1.mp3", 60],
+      ["conga-2", "Conga Slap 2", "conga_2.mp3", 60],
+      ["conga-3", "Conga Open 1", "conga_3.mp3", 60],
+      ["conga-4", "Conga Open 2", "conga_4.mp3", 60],
+    ]),
+    ...makeLiveSampleTracks("Live Drums", "Cymbals", "#d5b677", [
+      ["china-1", "China Cymbal 1", "china_cymbal1.mp3", 60],
+      ["china-2", "China Cymbal 2", "china_cymbal2.mp3", 60],
+      ["china-3", "China Cymbal 3", "china_cymbal3.mp3", 60],
+      ["crash-1", "Crash Cymbal 1", "crash_cymbal1.mp3", 60],
+      ["crash-2", "Crash Cymbal 2", "crash_cymbal2.mp3", 60],
+      ["crash-3", "Crash Cymbal 3", "crash_cymbal3.mp3", 60],
+      ["cymbal-1", "Ride Cymbal 1", "cymbal1.mp3", 60],
+      ["cymbal-2", "Ride Cymbal 2", "cymbal2.mp3", 60],
+    ]),
+    ...makeLiveSampleTracks("Live Drums", "Percussion", "#89c5a5", [
+      ["low-drum-1", "Low Drum 1", "drum_low_1.mp3", 60],
+      ["low-drum-2", "Low Drum 2", "drum_low_2.mp3", 60],
+    ]),
+    ...makeLiveSampleTracks("Live Drums", "Shakers", "#78b8cf", [
+      ["shaker-1", "Egg Shaker 1", "egg_shaker1.mp3", 60],
+      ["shaker-2", "Egg Shaker 2", "egg_shaker2.mp3", 60],
+    ]),
+    ...makeLiveSampleTracks("Live Guitars", "Strings & Chords", "#d29b79", [
+      ["a-string", "Guitar A String", "guitar_Astring.mp3", 45],
+      ["b-string", "Guitar B String", "guitar_Bstring.mp3", 59],
+      ["d-string", "Guitar D String", "guitar_Dstring.mp3", 50],
+      ["g-string", "Guitar G String", "guitar_Gstring.mp3", 55],
+      ["low-e-1", "Guitar Low E Take 1", "guitar_LowEstring1.mp3", 40],
+      ["low-e-2", "Guitar Low E Take 2", "guitar_LowEstring2.mp3", 40],
+      ["high-e", "Guitar High E String", "guitar_highEstring.mp3", 64],
+      ["chord-1", "Guitar Chord Take 1", "guitar_chord1.mp3", 60],
+      ["chord-2", "Guitar Chord Take 2", "guitar_chord2.mp3", 60],
+      ["chord-3", "Guitar Chord Take 3", "guitar_chord3.mp3", 60],
+      ["chord-4", "Guitar Chord Take 4", "guitar_chord4.mp3", 60],
+      ["hit-1", "Guitar Body Hit 1", "guitar_hit_!.mp3", 60],
+      ["hit-2", "Guitar Body Hit 2", "guitar_hit_2.mp3", 60],
+      ["pick-1", "Guitar Pick 1", "guitar_pick_1.mp3", 60],
+      ["pick-2", "Guitar Pick 2", "guitar_pick_2.mp3", 60],
+      ["pick-3", "Guitar Pick 3", "guitar_pick_3.mp3", 60],
+      ["riff", "Guitar Riff Cutup", "guitar_riff_cutup1.mp3", 60],
+    ]),
+    ...makeLiveSampleTracks("Live Bass", "Strings & Tones", "#89ad75", [
+      ["string-1", "Bass String Take 1", "bass_string1.mp3", 28],
+      ["string-2", "Bass String Take 2", "bass_string2.mp3", 33],
+      ["string-3", "Bass String Take 3", "bass_string3.mp3", 38],
+      ["string-4", "Bass String Take 4", "bass_string4.mp3", 43],
+      ["string-5", "Bass String Take 5", "bass_string5.mp3", 48],
+      ["string-6", "Bass String Take 6", "bass_string6.mp3", 53],
+      ["doublebass-1", "Double Bass Tone 1", "FM_doublebass.mp3", 40],
+      ["doublebass-2", "Double Bass Tone 2", "FM_doublebass2.mp3", 40],
+      ["doublebass-3", "Double Bass Tone 3", "FM_doublebass3.mp3", 40],
+      ["doublebass-4", "Double Bass Tone 4", "FM_doublebass4.mp3", 40],
+      ["balloon-1", "Balloon Bass 1", "balloonbass1.mp3", 40],
+      ["balloon-2", "Balloon Bass 2", "balloonbass2.mp3", 40],
+      ["fuzz-1", "Fuzz Bass Take 1", "fuzz_bass_1.mp3", 40],
+      ["fuzz-2", "Fuzz Bass Take 2", "fuzz_bass_2.mp3", 40],
+    ]),
+  ];
   const LIBRARY_TRACKS = [
     ...BASE_LIBRARY_TRACKS,
     ...EXTRA_DRUM_TRACKS,
     ...EXTRA_KIT_TRACKS,
     ...EXTRA_VOICE_TRACKS,
-  ].map((track) => ({ ...track, libraryOnly: true, subtitle: track.family }));
+    ...LIVE_SAMPLE_TRACKS,
+  ].map((track) => ({ ...track, libraryOnly: true, subtitle: track.subtitle || track.family }));
 
   const PRESETS = [
     {
@@ -413,6 +497,7 @@
   let stepInstrumentTargetTrackId = null;
   let stepInstrumentPickerMode = "step";
   let stepInstrumentPendingId = null;
+  const librarySampleLoads = new Map();
 
   function makeTracks() {
     const tracks = [...TRACKS, ...LIBRARY_TRACKS].map((definition) => {
@@ -543,6 +628,7 @@
   }
 
   function getDefaultStepMidi(track) {
+    if (Number.isFinite(track.sampleRootMidi)) return track.sampleRootMidi;
     return {
       kick: 36,
       snare: 38,
@@ -1872,6 +1958,7 @@
   }
 
   function getStepInstrumentGroup(track) {
+    if (track.sampleCategory && track.family) return `${track.family} · ${track.sampleCategory}`;
     if (track.kind === "sample") return "User Samples";
     if (track.family === "Drums" || !track.family) {
       const groups = {
@@ -1928,8 +2015,17 @@
               choice.classList.add("is-selected");
               choice.setAttribute("aria-pressed", "true");
               stepInstrumentPendingId = instrument.id;
-              $("#step-instrument-select").disabled = false;
-              previewInstrumentSound(instrument);
+              const selectButton = $("#step-instrument-select");
+              selectButton.disabled = true;
+              loadLibrarySample(instrument).then(() => {
+                if (stepInstrumentPendingId !== instrument.id || !$("#step-instrument-dialog").open) return;
+                selectButton.disabled = false;
+                previewInstrumentSound(instrument);
+              }).catch((error) => {
+                if (stepInstrumentPendingId === instrument.id) {
+                  showToast(error.message || `Could not load ${instrument.name}.`);
+                }
+              });
             });
             choice.setAttribute("aria-pressed", "false");
             choices.append(choice);
@@ -1943,12 +2039,22 @@
     $("#step-instrument-dialog").showModal();
   }
 
-  function applyStepInstrumentSelection() {
+  async function applyStepInstrumentSelection() {
     const instrument = state.tracks.find((track) => track.id === stepInstrumentPendingId && !track.sourceId);
     if (!instrument) {
       showToast("Choose an instrument before selecting.");
       return;
     }
+    const selectButton = $("#step-instrument-select");
+    selectButton.disabled = true;
+    try {
+      await loadLibrarySample(instrument);
+    } catch (error) {
+      showToast(error.message || `Could not load ${instrument.name}.`);
+      selectButton.disabled = false;
+      return;
+    }
+    if (stepInstrumentPendingId !== instrument.id) return;
     if (stepInstrumentPickerMode === "piano-roll") {
       selectPianoInstrument(instrument.id);
     } else {
@@ -2364,9 +2470,50 @@
     return select;
   }
 
+  async function loadLibrarySample(track) {
+    if (!track.sampleUrl || track.sample?.buffer) return;
+    await ensureAudio();
+    let load = librarySampleLoads.get(track.sampleUrl);
+    if (!load) {
+      load = (async () => {
+        const response = await fetch(track.sampleUrl);
+        if (!response.ok) throw new Error(`Could not load ${track.name} (${response.status}).`);
+        const buffer = await state.audioContext.decodeAudioData(await response.arrayBuffer());
+        state.tracks.filter((item) => item.sampleUrl === track.sampleUrl).forEach((item) => {
+          item.sample = { name: item.name, buffer };
+        });
+      })();
+      librarySampleLoads.set(track.sampleUrl, load);
+    }
+    try {
+      await load;
+    } catch (error) {
+      librarySampleLoads.delete(track.sampleUrl);
+      throw error;
+    }
+  }
+
+  async function loadLibrarySamplesForPlayback(workspace) {
+    let tracks = [];
+    if (workspace === "sequencer") {
+      tracks = getPatternTrackIds(getPattern()).map((trackId) => state.tracks.find((track) => track.id === trackId));
+    } else if (workspace === "piano-roll") {
+      const trackId = state.stepPianoEditContext?.trackId || getMel()?.instrumentId || state.selectedPianoTrackId;
+      const track = getPianoTrack(trackId);
+      if (track) tracks = [track];
+    } else if (workspace === "arrangement") {
+      const trackIds = state.patterns.flatMap((pattern) => getPatternTrackIds(pattern));
+      tracks = trackIds.map((trackId) => state.tracks.find((track) => track.id === trackId));
+    }
+    const uniqueSamples = new Map();
+    tracks.filter((track) => track?.sampleUrl).forEach((track) => uniqueSamples.set(track.sampleUrl, track));
+    await Promise.all(Array.from(uniqueSamples.values(), loadLibrarySample));
+  }
+
   async function previewInstrumentSound(track) {
     try {
       await ensureAudio();
+      await loadLibrarySample(track);
       if (track.kind === "sample" && !track.sample) {
         throw new Error("This sample is not ready to preview.");
       }
@@ -3070,6 +3217,7 @@
     updateWorkspacePlayButton(workspace, true);
     try {
       await ensureAudio();
+      await loadLibrarySamplesForPlayback(workspace);
       if (state.workspacePlayers[workspace] !== player) return;
       player.startTime = state.audioContext.currentTime + 0.04;
       if (workspace === "piano-roll") {
@@ -4364,7 +4512,7 @@
       }
 
       let container = familyGroup;
-      if (family === "Drums") {
+      if (family === "Drums" || family === "Live Drums") {
         const kindLabels = {
           kick: "Kicks",
           snare: "Snares",
@@ -4373,8 +4521,8 @@
           openhat: "Open Hi-Hats",
           rim: "Rims & Percussion",
         };
-        const kind = kindLabels[track.kind] ? track.kind : "other";
-        const subsectionKey = `drum-kind-${kind}`;
+        const kind = track.sampleCategory || (kindLabels[track.kind] ? kindLabels[track.kind] : "Other Drums");
+        const subsectionKey = `drum-kind-${kind.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
         let subsection = familyGroup.querySelector(`[data-subsection="${subsectionKey}"]`);
         if (!subsection) {
           subsection = document.createElement("section");
@@ -4382,7 +4530,7 @@
           subsection.dataset.subsection = subsectionKey;
           const heading = document.createElement("h4");
           heading.className = "instrument-kind-heading";
-          heading.textContent = kindLabels[kind] || "Other Drums";
+          heading.textContent = kind;
           subsection.append(heading);
           familyGroup.append(subsection);
         }
@@ -6243,15 +6391,20 @@
       const source = context.createBufferSource();
       source.buffer = track.sample.buffer;
       const envelope = context.createGain();
-      source.playbackRate.setValueAtTime(pitchRatio, time);
-      envelope.gain.setValueAtTime(1, time);
-      const duration = Math.max(0.005, Math.min(track.sample.buffer.duration / pitchRatio, noteDuration));
+      const sampleDetune = track.sampleHumanized ? (Math.random() - 0.5) * 8 : 0;
+      const samplePitchRatio = pitchRatio * Math.pow(2, sampleDetune / 1200);
+      const sampleVelocity = track.sampleHumanized ? 0.92 + Math.random() * 0.14 : 1;
+      source.playbackRate.setValueAtTime(samplePitchRatio, time);
+      envelope.gain.setValueAtTime(sampleVelocity, time);
+      const duration = Math.max(0.005, track.sampleOneShot
+        ? track.sample.buffer.duration / samplePitchRatio
+        : Math.min(track.sample.buffer.duration / samplePitchRatio, noteDuration));
       const fade = Math.min(0.01, duration * 0.1);
-      envelope.gain.setValueAtTime(1, time + Math.max(0, duration - fade));
+      envelope.gain.setValueAtTime(sampleVelocity, time + Math.max(0, duration - fade));
       envelope.gain.linearRampToValueAtTime(0.0001, time + duration);
       source.connect(envelope);
       envelope.connect(output);
-      source.start(time, 0, Math.min(track.sample.buffer.duration, duration * pitchRatio));
+      source.start(time, 0, Math.min(track.sample.buffer.duration, duration * samplePitchRatio));
       return;
     }
     const durationScale = noteDuration / getStepDuration();
@@ -6279,7 +6432,10 @@
       const source = context.createBufferSource();
       const envelope = context.createGain();
       const detune = Number.isFinite(noteOptions.detune) ? noteOptions.detune : 0;
-      const rate = Math.pow(2, (midi - 60 + detune / 100) / 12);
+      const rootMidi = Number.isFinite(track.sampleRootMidi) ? track.sampleRootMidi : 60;
+      const sampleDetune = track.sampleHumanized ? (Math.random() - 0.5) * 8 : 0;
+      const rate = Math.pow(2, (midi - rootMidi + (detune + sampleDetune) / 100) / 12);
+      if (track.sampleHumanized) velocity *= 0.92 + Math.random() * 0.14;
       source.buffer = track.sample.buffer;
       source.playbackRate.setValueAtTime(rate, time);
       const bufferDuration = Math.min(source.buffer.duration, Math.max(0.01, duration) * rate);
@@ -6579,6 +6735,7 @@
     if (state.isPlaying || state.isExporting) return;
     try {
       await ensureAudio();
+      await loadLibrarySamplesForPlayback(mode);
       state.isPlaying = true;
       state.playbackMode = mode;
       const arrangementPlayback = mode === "arrangement";
