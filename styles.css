@@ -588,6 +588,18 @@ kbd { border: 1px solid #393a3f; border-radius: 3px; padding: 2px 4px; color: #b
 .mixer-effect-presets select { min-width: 0; flex: 1; border: 1px solid #38393e; border-radius: 4px; background: #202125; padding: 4px 5px; color: #aeb0a7; font: inherit; font-size: 8px; }
 .mixer-effect-presets select:disabled { opacity: .55; }
 .mixer-effect-presets .mixer-track-action:disabled { cursor: default; opacity: .55; }
+.synth-edit-button { align-self: center; }
+.synth-edit-button[hidden] { display: none; }
+.dansbpm-synth-dialog { width: min(820px, calc(100vw - 28px)); max-height: min(86vh, 760px); overflow: auto; border: 1px solid #3a3b40; border-radius: 10px; background: #1b1c1f; padding: 18px; color: var(--text); box-shadow: 0 20px 60px #0009; }
+.dansbpm-synth-dialog::backdrop { background: #0009; backdrop-filter: blur(3px); }
+.dansbpm-synth-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.dansbpm-synth-heading h2 { margin: 3px 0 5px; font-size: 18px; }
+.dansbpm-synth-heading p { margin: 0; color: var(--muted); font-size: 10px; }
+.dansbpm-synth-controls { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 16px 0; }
+.dansbpm-synth-control { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px 8px; border: 1px solid #303136; border-radius: 5px; background: #202125; padding: 8px; color: #b7bab1; font-size: 9px; }
+.dansbpm-synth-control input[type="range"] { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
+.dansbpm-synth-control select { min-width: 0; grid-column: 1 / -1; border: 1px solid #38393e; border-radius: 4px; background: #17181b; padding: 5px; color: var(--text); font: inherit; }
+.dansbpm-synth-control output { color: #d7d8d4; font-family: var(--mono); font-size: 8px; }
 .mixer-effects-library { min-height: 0; display: flex; flex-direction: column; overflow: hidden; border: 1px solid #303136; border-radius: 7px; background: #1c1d20; padding: 12px; }
 .mixer-effects-library h2 { margin: 0; color: #e0e1dc; font-size: 13px; }
 .mixer-effects-library p { margin: 5px 0 10px; color: #85868c; font-size: 9px; }
@@ -618,6 +630,11 @@ kbd { border: 1px solid #393a3f; border-radius: 3px; padding: 2px 4px; color: #b
   .mixer-track-row { grid-template-columns: minmax(0, 1fr) 48px 58px; }
   .mixer-volume-monitor { width: 42px; }
   .mixer-track-effects { grid-column: 1 / -1; }
+  .dansbpm-synth-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 420px) {
+  .dansbpm-synth-controls { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (prefers-reduced-motion: reduce) {

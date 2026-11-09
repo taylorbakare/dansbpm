@@ -240,6 +240,16 @@
     { id: "bass-finger", name: "Finger Bass", kind: "instrument", family: "Bass", color: "#89ad75", volume: 0.72, patch: { wave: "triangle", cutoff: 950, attack: 0.008, decay: 0.22, sustain: 0.35, release: 0.13, harmonic: 2, harmonicLevel: 0.16 } },
     { id: "bass-sub", name: "Sub Bass", kind: "instrument", family: "Bass", color: "#78a6d4", volume: 0.72, patch: { wave: "sine", cutoff: 420, attack: 0.01, decay: 0.2, sustain: 0.48, release: 0.16 } },
     { id: "bass-fuzz", name: "Fuzz Bass", kind: "instrument", family: "Bass", color: "#d47e78", volume: 0.68, patch: { wave: "sawtooth", cutoff: 1500, attack: 0.004, decay: 0.18, sustain: 0.32, release: 0.12, detune: 5 } },
+    {
+      id: "synth-dansbpm", name: "DansBPM Synth", kind: "instrument", family: "In-house Synth", color: "#93e2bd", volume: 0.68,
+      patch: {
+        engine: "dansbpm", wave: "sawtooth", osc2Wave: "square", osc2Detune: 8, osc2Level: 0.28, subLevel: 0.2,
+        cutoff: 3200, resonance: 0.2, filterEnvOctaves: 2.5,
+        attack: 0.01, decay: 0.25, sustain: 0.55, release: 0.25,
+        filterAttack: 0.02, filterDecay: 0.35, filterSustain: 0.25,
+        lfoRate: 0.18, lfoDepth: 4, output: 0.72,
+      },
+    },
   ];
   function makeLiveSampleTracks(family, category, color, entries, volume = 0.68) {
     return entries.map(([id, name, file, rootMidi]) => ({
@@ -547,7 +557,8 @@
       const cells = Array(STEP_COUNT).fill(false);
       definition.hits?.forEach((step) => { cells[step] = true; });
       return {
-        ...definition, cells, variant: definition.variant || "classic", muted: false, solo: false, pitch: 0, swing: null,
+        ...definition, patch: definition.patch ? { ...definition.patch } : definition.patch,
+        cells, variant: definition.variant || "classic", muted: false, solo: false, pitch: 0, swing: null,
         sample: null, gainNode: null, effects: makeDefaultEffects(),
       };
     });
@@ -1324,6 +1335,193 @@
     picker.disabled = !selected;
     picker.setAttribute("aria-label", selected ? `Piano roll instrument: ${selected.name}` : "Choose piano roll instrument");
     picker.title = selected?.name || "Choose an instrument";
+    let editButton = $("#edit-dansbpm-synth");
+    if (!editButton) {
+      editButton = document.createElement("button");
+      editButton.id = "edit-dansbpm-synth";
+      editButton.className = "quiet-button synth-edit-button";
+      editButton.type = "button";
+      editButton.textContent = "Edit synth";
+      editButton.setAttribute("aria-haspopup", "dialog");
+      editButton.addEventListener("click", openDansBpmSynthEditor);
+      picker.closest(".pattern-select-control").after(editButton);
+    }
+    editButton.hidden = selected?.id !== "synth-dansbpm";
+  }
+
+  function getDansBpmSynthTrack() {
+    return state.tracks.find((track) => track.id === "synth-dansbpm") || null;
+  }
+
+  function getDansBpmSynthStorageKey() {
+    return `${STORAGE_KEY}-inhouse-synth-${state.currentUser}-${state.projectId}`;
+  }
+
+  function restoreDansBpmSynthPatch() {
+    const track = getDansBpmSynthTrack();
+    if (!track || !state.currentUser || !state.projectId) return;
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(getDansBpmSynthStorageKey()) || "null");
+      if (!saved || typeof saved !== "object") return;
+      const waveforms = ["sine", "triangle", "sawtooth", "square"];
+      track.patch = { ...track.patch };
+      if (waveforms.includes(saved.wave)) track.patch.wave = saved.wave;
+      if (waveforms.includes(saved.osc2Wave)) track.patch.osc2Wave = saved.osc2Wave;
+      const ranges = {
+        osc2Detune: [-30, 30], osc2Level: [0, 0.7], subLevel: [0, 0.7],
+        cutoff: [80, 18000], resonance: [0.1, 0.95], filterEnvOctaves: [0, 5],
+        attack: [0.001, 3], decay: [0.01, 4], sustain: [0, 1], release: [0.005, 5],
+        filterAttack: [0.001, 3], filterDecay: [0.01, 4], filterSustain: [0, 1],
+        lfoRate: [0, 12], lfoDepth: [0, 100], output: [0, 1],
+      };
+      Object.entries(ranges).forEach(([key, [min, max]]) => {
+        if (Number.isFinite(saved[key])) track.patch[key] = Math.max(min, Math.min(max, saved[key]));
+      });
+    } catch (error) {
+      showToast(`Could not load DansBPM Synth settings: ${error.message || "browser storage is unavailable."}`);
+    }
+  }
+
+  function saveDansBpmSynthPatch(track) {
+    if (!state.currentUser || !state.projectId) {
+      showToast("Choose a profile and project before saving synth settings.");
+      return;
+    }
+    try {
+      window.localStorage.setItem(getDansBpmSynthStorageKey(), JSON.stringify(track.patch));
+      saveState();
+    } catch (error) {
+      showToast(`Could not save DansBPM Synth settings: ${error.message || "browser storage is unavailable."}`);
+    }
+  }
+
+  function formatDansBpmSynthValue(key, value) {
+    if (key === "cutoff") return `${Math.round(value)} Hz`;
+    if (key === "attack" || key === "decay" || key === "release" || key === "filterAttack" || key === "filterDecay") return `${Number(value).toFixed(2)} s`;
+    if (key === "osc2Detune") return `${Math.round(value)} cents`;
+    if (key === "filterEnvOctaves") return `${Number(value).toFixed(1)} oct`;
+    if (key === "lfoRate") return `${Number(value).toFixed(2)} Hz`;
+    if (["osc2Level", "subLevel", "sustain", "filterSustain", "output"].includes(key)) return `${Math.round(value * 100)}%`;
+    if (key === "lfoDepth") return `${Math.round(value)} cents`;
+    return Number(value).toFixed(2);
+  }
+
+  function createDansBpmSynthEditor() {
+    const dialog = document.createElement("dialog");
+    dialog.id = "dansbpm-synth-dialog";
+    dialog.className = "dansbpm-synth-dialog";
+    dialog.setAttribute("aria-labelledby", "dansbpm-synth-title");
+    const heading = document.createElement("div");
+    heading.className = "dansbpm-synth-heading";
+    const title = document.createElement("div");
+    const headingText = document.createElement("h2");
+    headingText.id = "dansbpm-synth-title";
+    headingText.textContent = "DansBPM Synth";
+    const description = document.createElement("p");
+    description.textContent = "Two oscillators, sub, filter envelope, and MIDI-controlled polyphonic voices.";
+    title.append(headingText, description);
+    const close = document.createElement("button");
+    close.className = "dialog-close";
+    close.type = "button";
+    close.textContent = "×";
+    close.setAttribute("aria-label", "Close synth editor");
+    close.addEventListener("click", () => dialog.close());
+    heading.append(title, close);
+
+    const controls = document.createElement("div");
+    controls.className = "dansbpm-synth-controls";
+    const definitions = [
+      { key: "wave", label: "Oscillator 1", options: ["sine", "triangle", "sawtooth", "square"] },
+      { key: "osc2Wave", label: "Oscillator 2", options: ["sine", "triangle", "sawtooth", "square"] },
+      { key: "osc2Detune", label: "Oscillator 2 detune", min: -30, max: 30, step: 0.1 },
+      { key: "osc2Level", label: "Oscillator 2 level", min: 0, max: 0.7, step: 0.01 },
+      { key: "subLevel", label: "Sub level", min: 0, max: 0.7, step: 0.01 },
+      { key: "cutoff", label: "Filter cutoff", min: 80, max: 18000, step: 10 },
+      { key: "resonance", label: "Filter resonance", min: 0.1, max: 0.95, step: 0.01 },
+      { key: "filterEnvOctaves", label: "Filter envelope", min: 0, max: 5, step: 0.1 },
+      { key: "attack", label: "Amp attack", min: 0.001, max: 3, step: 0.001 },
+      { key: "decay", label: "Amp decay", min: 0.01, max: 4, step: 0.01 },
+      { key: "sustain", label: "Amp sustain", min: 0, max: 1, step: 0.01 },
+      { key: "release", label: "Amp release", min: 0.005, max: 5, step: 0.01 },
+      { key: "filterAttack", label: "Filter attack", min: 0.001, max: 3, step: 0.001 },
+      { key: "filterDecay", label: "Filter decay", min: 0.01, max: 4, step: 0.01 },
+      { key: "filterSustain", label: "Filter sustain", min: 0, max: 1, step: 0.01 },
+      { key: "lfoRate", label: "LFO rate", min: 0, max: 12, step: 0.01 },
+      { key: "lfoDepth", label: "LFO depth", min: 0, max: 100, step: 1 },
+      { key: "output", label: "Output", min: 0, max: 1, step: 0.01 },
+    ];
+    definitions.forEach((definition) => {
+      const control = document.createElement("label");
+      control.className = "dansbpm-synth-control";
+      const caption = document.createElement("span");
+      caption.textContent = definition.label;
+      const input = document.createElement(definition.options ? "select" : "input");
+      input.dataset.patchKey = definition.key;
+      input.setAttribute("aria-label", definition.label);
+      if (definition.options) {
+        definition.options.forEach((optionValue) => {
+          const option = document.createElement("option");
+          option.value = optionValue;
+          option.textContent = optionValue;
+          input.append(option);
+        });
+      } else {
+        input.type = "range";
+        input.min = String(definition.min);
+        input.max = String(definition.max);
+        input.step = String(definition.step);
+      }
+      const output = document.createElement("output");
+      if (!definition.options) control.append(caption, input, output);
+      else control.append(caption, input);
+      const updatePatch = () => {
+        const track = getDansBpmSynthTrack();
+        if (!track) return;
+        const value = input.tagName === "SELECT" ? input.value : Number(input.value);
+        track.patch = { ...track.patch, [definition.key]: value };
+        if (input.tagName !== "SELECT") output.textContent = formatDansBpmSynthValue(definition.key, value);
+        saveDansBpmSynthPatch(track);
+      };
+      input.addEventListener(input.tagName === "SELECT" ? "change" : "input", updatePatch);
+      controls.append(control);
+    });
+
+    const reset = document.createElement("button");
+    reset.className = "quiet-button";
+    reset.type = "button";
+    reset.textContent = "Reset to factory";
+    reset.addEventListener("click", () => {
+      const track = getDansBpmSynthTrack();
+      const factory = LIBRARY_TRACKS.find((instrument) => instrument.id === "synth-dansbpm");
+      if (!track || !factory) return;
+      track.patch = { ...factory.patch };
+      syncDansBpmSynthEditor(dialog, track);
+      saveDansBpmSynthPatch(track);
+    });
+    dialog.append(heading, controls, reset);
+    dialog.addEventListener("click", (event) => {
+      if (event.target === dialog) dialog.close();
+    });
+    document.body.append(dialog);
+    return dialog;
+  }
+
+  function syncDansBpmSynthEditor(dialog, track) {
+    dialog.querySelectorAll("[data-patch-key]").forEach((input) => {
+      const key = input.dataset.patchKey;
+      input.value = String(track.patch[key]);
+      const output = input.parentElement.querySelector("output");
+      if (output && input.tagName !== "SELECT") output.textContent = formatDansBpmSynthValue(key, Number(input.value));
+    });
+  }
+
+  function openDansBpmSynthEditor() {
+    const track = getPianoTrack();
+    if (track?.id !== "synth-dansbpm") return;
+    const dialog = $("#dansbpm-synth-dialog") || createDansBpmSynthEditor();
+    dialog.dataset.trackId = track.id;
+    syncDansBpmSynthEditor(dialog, track);
+    dialog.showModal();
   }
 
   function selectPianoInstrument(trackId) {
@@ -7146,9 +7344,90 @@
     triggerTrack(track, time, 0, track.variant, duration, outputTrack, outputNode, midi - getDefaultStepMidi(track));
   }
 
+  function playDansBpmSynthVoice(track, time, midi, duration, velocity, outputNode, noteOptions = {}) {
+    const context = state.audioContext;
+    const patch = track.patch || {};
+    const parameter = (key, fallback) => Number.isFinite(patch[key]) ? patch[key] : fallback;
+    const frequency = 440 * Math.pow(2, (midi - 69) / 12);
+    const durationScale = Number.isFinite(noteOptions.soundDurationScale)
+      ? Math.max(0.01, Math.min(1, noteOptions.soundDurationScale))
+      : 1;
+    const attack = Math.min(
+      Math.max(0, Number.isFinite(noteOptions.attack) ? noteOptions.attack : parameter("attack", 0.01)),
+      Math.max(0.002, duration * 0.7),
+    );
+    const decay = Math.min(parameter("decay", 0.25), Math.max(0, duration - attack));
+    const sustain = Math.max(0, Math.min(0.9, parameter("sustain", 0.55)));
+    const release = Math.max(0.01, parameter("release", 0.25) * durationScale);
+    const gateEnd = time + Math.max(0.02, duration);
+    const outputLevel = Number.isFinite(patch.output) ? Math.max(0, Math.min(1, patch.output)) : 0.72;
+    const peak = velocity * 0.48 * outputLevel;
+    const envelope = context.createGain();
+    const filter = context.createBiquadFilter();
+    const cutoff = Math.max(80, Math.min(18000, Number(patch.cutoff) || 3200));
+    const filterPeak = Math.min(18000, cutoff * Math.pow(2, parameter("filterEnvOctaves", 0)));
+    const filterAttack = Math.min(Math.max(0, parameter("filterAttack", 0.02)), duration * 0.7);
+    const filterDecay = Math.min(parameter("filterDecay", 0.35), Math.max(0, duration - filterAttack));
+    const filterSustain = Math.max(0, Math.min(1, parameter("filterSustain", 0.25)));
+    const filterSustainFrequency = cutoff * Math.pow(2, Math.log2(Math.max(1, filterPeak / cutoff)) * filterSustain);
+
+    filter.type = "lowpass";
+    filter.Q.setValueAtTime(Math.max(0.1, Math.min(18, Number(patch.resonance) || 0.2)) * 4, time);
+    filter.frequency.setValueAtTime(cutoff, time);
+    filter.frequency.linearRampToValueAtTime(filterPeak, time + filterAttack);
+    filter.frequency.linearRampToValueAtTime(filterSustainFrequency, time + filterAttack + filterDecay);
+    filter.frequency.setValueAtTime(filterSustainFrequency, gateEnd);
+    filter.frequency.linearRampToValueAtTime(cutoff, gateEnd + release);
+
+    envelope.gain.setValueAtTime(0.0001, time);
+    envelope.gain.linearRampToValueAtTime(peak, time + attack);
+    envelope.gain.linearRampToValueAtTime(peak * sustain, time + attack + decay);
+    envelope.gain.setValueAtTime(peak * sustain, gateEnd);
+    envelope.gain.linearRampToValueAtTime(0.0001, gateEnd + release);
+
+    const oscillators = [
+      { type: patch.wave || "sawtooth", rate: frequency, level: 0.62, detune: Number(noteOptions.detune) || 0 },
+      { type: patch.osc2Wave || patch.wave || "sawtooth", rate: frequency, level: Math.max(0, Math.min(0.7, parameter("osc2Level", 0.28))), detune: parameter("osc2Detune", 0) + (Number(noteOptions.detune) || 0) },
+      { type: "sine", rate: frequency / 2, level: Math.max(0, Math.min(0.7, parameter("subLevel", 0))), detune: 0 },
+    ];
+    const activeOscillators = oscillators.filter((oscillator) => oscillator.level > 0).map((settings) => {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.type = settings.type;
+      oscillator.frequency.setValueAtTime(settings.rate, time);
+      oscillator.detune.setValueAtTime(settings.detune, time);
+      gain.gain.setValueAtTime(settings.level, time);
+      oscillator.connect(gain);
+      gain.connect(filter);
+      oscillator.start(time);
+      oscillator.stop(gateEnd + release + 0.02);
+      return oscillator;
+    });
+
+    envelope.connect(outputNode);
+    filter.connect(envelope);
+
+    const lfoRate = Math.max(0, Math.min(20, parameter("lfoRate", 0)));
+    const lfoDepth = Math.max(0, Math.min(100, parameter("lfoDepth", 0)));
+    if (activeOscillators.length && lfoRate > 0 && lfoDepth > 0) {
+      const lfo = context.createOscillator();
+      const lfoGain = context.createGain();
+      lfo.frequency.setValueAtTime(lfoRate, time);
+      lfoGain.gain.setValueAtTime(lfoDepth, time);
+      lfo.connect(lfoGain);
+      activeOscillators.forEach((oscillator) => lfoGain.connect(oscillator.detune));
+      lfo.start(time);
+      lfo.stop(gateEnd + release + 0.02);
+    }
+  }
+
   function playInstrumentVoice(track, time, midi, duration, velocity, outputTrack = track, outputNode = outputTrack.gainNode, noteOptions = {}) {
     const context = state.audioContext;
     const patch = track.patch || {};
+    if (patch.engine === "dansbpm") {
+      playDansBpmSynthVoice(track, time, midi, duration, velocity, outputNode, noteOptions);
+      return;
+    }
     const frequency = 440 * Math.pow(2, (midi - 69) / 12);
     const noteAttack = Number.isFinite(noteOptions.attack) ? noteOptions.attack : Number(patch.attack) || 0.005;
     const attack = Math.min(Math.max(0, noteAttack), Math.max(0.002, duration * 0.7));
@@ -9299,6 +9578,7 @@
     state.selectedPatternId = initialPattern.id;
     initializeProjects();
     if (state.currentUser) restoreState();
+    restoreDansBpmSynthPatch();
     ensureMels();
     tempoValue.textContent = String(state.bpm);
     swingSlider.value = String(state.swing);
