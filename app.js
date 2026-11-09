@@ -278,7 +278,7 @@
   ];
   const MAX_PATTERN_BARS = 32;
   const MAX_PATTERN_STEPS = MAX_PATTERN_BARS * 16;
-  const STEP_COUNT = MAX_PATTERN_BARS * 32;
+  const STEP_COUNT = MAX_PATTERN_BARS * 64;
   const BASE_BAR_WIDTH = 116;
   let BAR_WIDTH = BASE_BAR_WIDTH;
   const PIANO_TICK_WIDTH = 16;
@@ -286,8 +286,8 @@
   const DEFAULT_ARRANGEMENT_TRACK_ID = "default-track";
   const TRACK_COLORS = ["#7cc9ff", "#ff9178", "#ee9df6", "#f6ca74", "#93e2bd"];
   const PATTERN_COLORS = ["#d3f36b", "#7cc9ff", "#ff9178", "#ee9df6", "#f6ca74", "#93e2bd", "#b5a0ff", "#f28dba"];
-  const GRID_RESOLUTIONS = ["1/32", "1/16", "1/8", "1/4"];
-  const GRID_STEPS_PER_BAR = { "1/32": 32, "1/16": 16, "1/8": 8, "1/4": 4 };
+  const GRID_RESOLUTIONS = ["1/64", "1/32", "1/16", "1/8", "1/4"];
+  const GRID_STEPS_PER_BAR = { "1/64": 64, "1/32": 32, "1/16": 16, "1/8": 8, "1/4": 4 };
   const LIVE_KEY_CODES = [
     ..."1234567890".split("").map((key) => `Digit${key}`),
     ..."qwertyuiopasdfghjklzxcvbnm".split("").map((key) => `Key${key.toUpperCase()}`),
@@ -865,6 +865,17 @@
 
   function getGridTicksPerStep(pattern = getPattern()) {
     return 32 / getStepsPerBar(pattern);
+  }
+
+  function getGridEventsForTick(pattern, clockTick) {
+    const ticksPerStep = getGridTicksPerStep(pattern);
+    const subdivisions = Math.max(1, Math.round(1 / ticksPerStep));
+    const stepCount = getGridStepCount(pattern);
+    return Array.from({ length: subdivisions }, (_, subdivision) => {
+      const tickOffset = subdivision / subdivisions;
+      const step = (clockTick + tickOffset) / ticksPerStep;
+      return Number.isInteger(step) ? { step: step % stepCount, tickOffset } : null;
+    }).filter(Boolean);
   }
 
   function isSongWorkspace() {
@@ -2833,15 +2844,22 @@
       } else if (sequencerPlayback) {
         const pattern = getPattern();
         const gridStepCount = getGridStepCount(pattern);
-        const ticksPerGridStep = getGridTicksPerStep(pattern);
-        if (clockStep % ticksPerGridStep === 0) {
-          const absoluteTick = Math.round((state.nextStepTime - state.playbackStartTime) / getSchedulerTickDuration());
-          const patternTicks = pattern.steps * 2;
-          if (absoluteTick > 0 && absoluteTick % patternTicks === 0) state.liveRecordedHits.clear();
-          const loopIndex = Math.floor(absoluteTick / patternTicks);
-          scheduleStep(Math.floor(clockStep / ticksPerGridStep) % gridStepCount, state.nextStepTime + swingOffset, pattern, loopIndex);
-        }
+        const absoluteTick = Math.round((state.nextStepTime - state.playbackStartTime) / getSchedulerTickDuration());
+        const patternTicks = pattern.steps * 2;
+        if (absoluteTick > 0 && absoluteTick % patternTicks === 0) state.liveRecordedHits.clear();
+        const loopIndex = Math.floor(absoluteTick / patternTicks);
+        getGridEventsForTick(pattern, clockStep).forEach(({ step, tickOffset }) => {
+          const eventTick = clockStep + tickOffset;
+          const eventSwingOffset = Math.floor(eventTick / 2) % 2 === 1 ? getStepDuration() * (state.swing / 100) : 0;
+          const eventTime = state.nextStepTime + tickOffset * getSchedulerTickDuration();
+          scheduleStep(step % gridStepCount, eventTime + eventSwingOffset, pattern, loopIndex);
+        });
         schedulePatternPianoNotes(pattern, clockStep % (pattern.steps * 2), state.nextStepTime, null);
+        if (getGridTicksPerStep(pattern) < 1 ||
+          Object.values(pattern.stepPianoNotes || {}).some((notes) => notes.some((note) => !Number.isInteger(note.startTick)))) {
+          schedulePatternPianoNotes(pattern, (clockStep + 0.5) % (pattern.steps * 2),
+            state.nextStepTime + getSchedulerTickDuration() / 2, null);
+        }
         if (state.metronome && state.recordingMetronomeTimer === null && clockStep % 8 === 0) {
           triggerClick(state.nextStepTime, clockStep % 32 === 0);
         }
@@ -3045,13 +3063,18 @@
       if (workspace === "sequencer") {
         const pattern = getPattern();
         if (pattern) {
-          const ticksPerGridStep = getGridTicksPerStep(pattern);
-          if (clockStep % ticksPerGridStep === 0) {
-            const gridStep = Math.floor(clockStep / ticksPerGridStep) % getGridStepCount(pattern);
-            const swingOffset = Math.floor(clockStep / 2) % 2 === 1 ? getStepDuration() * (state.swing / 100) : 0;
-            scheduleStep(gridStep, player.nextStepTime + swingOffset, pattern, null, false, player);
-          }
+          getGridEventsForTick(pattern, clockStep).forEach(({ step, tickOffset }) => {
+            const eventTick = clockStep + tickOffset;
+            const swingOffset = Math.floor(eventTick / 2) % 2 === 1 ? getStepDuration() * (state.swing / 100) : 0;
+            const eventTime = player.nextStepTime + tickOffset * getSchedulerTickDuration();
+            scheduleStep(step % getGridStepCount(pattern), eventTime + swingOffset, pattern, null, false, player);
+          });
           schedulePatternPianoNotes(pattern, clockStep % (pattern.steps * 2), player.nextStepTime);
+          if (getGridTicksPerStep(pattern) < 1 ||
+            Object.values(pattern.stepPianoNotes || {}).some((notes) => notes.some((note) => !Number.isInteger(note.startTick)))) {
+            schedulePatternPianoNotes(pattern, (clockStep + 0.5) % (pattern.steps * 2),
+              player.nextStepTime + getSchedulerTickDuration() / 2);
+          }
         }
       } else {
         scheduleWorkspaceMelLoop(player, now, lookAhead);
