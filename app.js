@@ -258,6 +258,10 @@
     }));
   }
   const LIVE_SAMPLE_TRACKS = [
+    ...makeLiveSampleTracks("Live Drums", "Kicks", "#d4f16c", [
+      ["double-kick-1", "Live Double Kick Take 1", "double_kick1.mp3", 36],
+      ["double-kick-2", "Live Double Kick Take 2", "double_kick2.mp3", 36],
+    ]),
     ...makeLiveSampleTracks("Live Drums", "Claps", "#e58b7a", [
       ["clap-1", "Studio Clap Take 1", "Clap1.mp3", 60],
       ["clap-2", "Studio Clap Take 2", "Clap2.mp3", 60],
@@ -269,6 +273,8 @@
       ["conga-2", "Conga Slap 2", "conga_2.mp3", 60],
       ["conga-3", "Conga Open 1", "conga_3.mp3", 60],
       ["conga-4", "Conga Open 2", "conga_4.mp3", 60],
+      ["conga-roll-1", "Conga Roll 1", "conga_roll_1.mp3", 60],
+      ["conga-roll-2", "Conga Roll 2", "conga_roll_2.mp3", 60],
     ]),
     ...makeLiveSampleTracks("Live Drums", "Cymbals", "#d5b677", [
       ["china-1", "China Cymbal 1", "china_cymbal1.mp3", 60],
@@ -279,10 +285,28 @@
       ["crash-3", "Crash Cymbal 3", "crash_cymbal3.mp3", 60],
       ["cymbal-1", "Ride Cymbal 1", "cymbal1.mp3", 60],
       ["cymbal-2", "Ride Cymbal 2", "cymbal2.mp3", 60],
+      ["bowed-cymbal-1", "Bowed Cymbal Swell 1", "bowed_cymbal_1.mp3", 60],
+      ["bowed-cymbal-1b", "Bowed Cymbal Swell 1B", "bowed_cymbal_1b.mp3", 60],
+      ["bowed-cymbal-2", "Bowed Cymbal Swell 2", "bowed_cymbal_2.mp3", 60],
+      ["bowed-cymbal-2b", "Bowed Cymbal Swell 2B", "bowed_cymbal_2b.mp3", 60],
+      ["bowed-cymbal-3", "Bowed Cymbal Swell 3", "bowed_cymbal_3.mp3", 60],
+      ["cymbal-drop-1", "Cymbal Drop 1", "cymbal_drop1.mp3", 60],
+      ["cymbal-drop-2", "Cymbal Drop 2", "cymbal_drop2.mp3", 60],
     ]),
     ...makeLiveSampleTracks("Live Drums", "Percussion", "#89c5a5", [
       ["low-drum-1", "Low Drum 1", "drum_low_1.mp3", 60],
       ["low-drum-2", "Low Drum 2", "drum_low_2.mp3", 60],
+      ["balloon-drum-1", "Balloon Percussion Take 1", "balloon_drumming1.mp3", 60],
+      ["balloon-drum-2", "Balloon Percussion Take 2", "balloon_drumming2.mp3", 60],
+      ["balloon-drum-3", "Balloon Percussion Take 3", "balloon_drumming3.mp3", 60],
+      ["balloon-drum-4", "Balloon Percussion Take 4", "balloon_drumming4.mp3", 60],
+      ["balloon-drum-5", "Balloon Percussion Take 5", "balloondrumming1.mp3", 60],
+      ["balloon-drum-6", "Balloon Percussion Take 6", "balloondrumming2.mp3", 60],
+      ["metal-drum-1", "Metal Drum Hit 1", "drumming_clanks.mp3", 60],
+      ["metal-drum-2", "Metal Drum Hit 2", "drumming_clanks2.mp3", 60],
+      ["metal-drum-3", "Metal Drum Hit 3", "drumming_clanks3.mp3", 60],
+      ["fiberboard-1", "Fiberboard Percussion 1", "fiberboard_percussive1.mp3", 60],
+      ["fiberboard-2", "Fiberboard Percussion 2", "fiberboard_percussive2.mp3", 60],
     ]),
     ...makeLiveSampleTracks("Live Drums", "Shakers", "#78b8cf", [
       ["shaker-1", "Egg Shaker 1", "egg_shaker1.mp3", 60],
