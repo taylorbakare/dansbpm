@@ -318,10 +318,13 @@
                           <h1>DJ Decks</h1>
                           <p class="section-subtitle">Patterns and Mels follow project tempo; imported audio loops at its original rate.</p>
                         </div>
-                        <div class="dj-crossfader-control">
-                          <label for="dj-crossfader">CROSSFADER</label>
-                          <div class="dj-crossfader-labels"><span>A</span><span>B</span></div>
-                          <input id="dj-crossfader" type="range" min="0" max="100" step="1" value="50" aria-label="DJ crossfader">
+                        <div class="dj-heading-actions">
+                          <div class="dj-crossfader-control">
+                            <label for="dj-crossfader">CROSSFADER</label>
+                            <div class="dj-crossfader-labels"><span>A</span><span>B</span></div>
+                            <input id="dj-crossfader" type="range" min="0" max="100" step="1" value="50" aria-label="DJ crossfader">
+                          </div>
+                          <button class="quiet-button dj-expand-button" id="dj-expand-button" type="button" aria-pressed="false" aria-label="Expand DJ view">Expand</button>
                         </div>
                       </div>
                       <div class="dj-decks">
@@ -417,7 +420,7 @@
                         </div>
                         <div class="dj-pad-grid" id="dj-pad-grid"></div>
                       </section>
-                      <p class="dj-controls-hint">Drag a platter to scratch; use REV and the pitch fader for playback direction and speed. Keyboard: QWER / ASDF / ZXCV / 1234 pads · Space play/pause · [ / ] focus deck · Y sync · , / . nudge · ← / → crossfader · F1–F8 live slots · L add source</p>
+                      <p class="dj-controls-hint">Drag a platter to scratch; use REV and the pitch fader for playback direction and speed. Keyboard: QWER / ASDF / ZXCV / 1234 pads · Space selected deck · Expanded: Space all loaded decks, Ctrl + Space Deck A, Alt + Space Deck B · [ / ] focus deck · Y sync · , / . nudge · ← / → crossfader · F1–F8 cue slots · L add source</p>
                     </section>
                   </div>
                 </section>

@@ -3395,7 +3395,20 @@
     },
   };
   let djVisualTimer = null;
+  let djViewExpanded = false;
   const reversedDjBuffers = new WeakMap();
+
+  function setDjViewExpanded(expanded, restoreFocus = true) {
+    if (expanded && state.view !== "dj") return;
+    djViewExpanded = expanded;
+    document.body.classList.toggle("is-dj-expanded", expanded);
+    const button = $("#dj-expand-button");
+    button.textContent = expanded ? "Exit full screen" : "Expand";
+    button.setAttribute("aria-label", expanded ? "Exit expanded DJ view" : "Expand DJ view");
+    button.setAttribute("aria-pressed", String(expanded));
+    if (!expanded && restoreFocus) button.focus();
+    window.requestAnimationFrame(drawDjLiveView);
+  }
 
   function getDjStorageKey() {
     return `${getProjectStorageKey(state.projectId)}:dj`;
@@ -4160,6 +4173,21 @@
     else startDjDeck(deckId);
   }
 
+  function toggleDjDeckGroup(deckIds) {
+    const loadedDeckIds = deckIds.filter((deckId) => getDjSource(djState.decks[deckId].sourceKey));
+    if (!loadedDeckIds.length) {
+      showToast("Load a track into a deck first.");
+      return;
+    }
+    if (loadedDeckIds.every((deckId) => djState.decks[deckId].playing)) {
+      loadedDeckIds.forEach((deckId) => stopDjDeck(deckId));
+      return;
+    }
+    loadedDeckIds.forEach((deckId) => {
+      if (!djState.decks[deckId].playing) startDjDeck(deckId);
+    });
+  }
+
   function scheduleDjDeck(deckId) {
     const deck = djState.decks[deckId];
     if (!deck.playing || !state.audioContext) return;
@@ -4325,7 +4353,28 @@
   }
 
   function handleDjKeydown(event) {
-    if (state.view !== "dj" || state.workspaceHidden || event.ctrlKey || event.altKey || event.metaKey) return;
+    if (state.view !== "dj") return;
+    const dialogOpen = $("#help-dialog").open || $("#project-dialog").open || $("#source-browser-dialog").open ||
+      $("#step-instrument-dialog").open || $("#step-track-mix-dialog").open;
+    const djControlFocused = event.target instanceof Element &&
+      event.target.closest("input, select, textarea, [contenteditable='true']");
+    if (djViewExpanded && event.code === "Escape" && !dialogOpen && !djControlFocused) {
+      event.preventDefault();
+      setDjViewExpanded(false);
+      return;
+    }
+    if (djViewExpanded && event.code === "Space") {
+      if (dialogOpen || (djControlFocused && !(event.ctrlKey || event.altKey || event.metaKey))) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.repeat) return;
+      if ((event.ctrlKey || event.metaKey) && event.altKey) return;
+      if (event.altKey) toggleDjDeck("B");
+      else if (event.ctrlKey || event.metaKey) toggleDjDeck("A");
+      else toggleDjDeckGroup(DJ_DECK_IDS);
+      return;
+    }
+    if (state.workspaceHidden || event.ctrlKey || event.altKey || event.metaKey) return;
     if (event.target instanceof Element && event.target.closest("input, select, textarea, [contenteditable='true']")) return;
     const padIndex = DJ_PAD_KEYS.indexOf(event.code);
     const slotIndex = /^F[1-8]$/.test(event.code) ? Number(event.code.slice(1)) - 1 : -1;
@@ -4363,6 +4412,7 @@
   }
 
   function bindDjEvents() {
+    $("#dj-expand-button").addEventListener("click", () => setDjViewExpanded(!djViewExpanded));
     document.querySelectorAll(".dj-live-waveform-row").forEach((row) => {
       const deckId = row.dataset.deck;
       if (!DJ_DECK_IDS.includes(deckId)) return;
@@ -7941,6 +7991,7 @@
 
   function setWorkspaceView(view, force = false) {
     if (view === state.view && !force && !state.workspaceHidden) return;
+    if (view !== "dj" && djViewExpanded) setDjViewExpanded(false, false);
     if (state.stepPianoEditContext && view !== "piano-roll") closeStepInstrumentPianoRoll();
     if (state.keyboardRecordingCountdown && view !== "piano-roll") cancelKeyboardRecordingCountdown();
     if (state.isPlaying) stopPlayback();
@@ -10634,6 +10685,10 @@
       );
       const dialogOpen = $("#help-dialog").open || $("#project-dialog").open || $("#source-browser-dialog").open ||
         $("#step-instrument-dialog").open || $("#step-track-mix-dialog").open;
+      const djControlFocused = state.view === "dj" && djViewExpanded &&
+        target instanceof Element && target.closest("input, select, textarea, [contenteditable='true']");
+      if (state.view === "dj" && djViewExpanded && event.code === "Space" &&
+        (dialogOpen || (djControlFocused && !(event.ctrlKey || event.altKey || event.metaKey)))) return;
       if (event.code === "Space" && (event.ctrlKey || event.metaKey) && !event.altKey && !isTextEntry) {
         event.preventDefault();
         if (event.repeat) return;
