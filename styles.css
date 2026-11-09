@@ -201,7 +201,7 @@ kbd { border: 1px solid #393a3f; border-radius: 3px; padding: 2px 4px; color: #b
 .step-instrument-dialog::backdrop, .step-track-mix-dialog::backdrop { background: #0009; backdrop-filter: blur(3px); }
 .step-dialog-heading { position: relative; display: flex; align-items: flex-start; justify-content: space-between; padding-right: 28px; }
 .step-dialog-heading h2 { margin: 7px 0 14px; font-size: 18px; }
-.step-instrument-library { max-height: min(580px, calc(100dvh - 220px)); overflow-y: auto; padding-right: 5px; }
+.step-instrument-library { max-height: min(480px, calc(100dvh - 320px)); overflow-y: auto; padding-right: 5px; }
 .step-instrument-actions { display: flex; justify-content: flex-end; border-top: 1px solid #34353a; margin-top: 14px; padding-top: 12px; }
 .step-instrument-select-button { min-width: 84px; justify-content: center; }
 .step-instrument-select-button:disabled { color: #77787e; cursor: not-allowed; opacity: .6; }
@@ -281,7 +281,7 @@ kbd { border: 1px solid #393a3f; border-radius: 3px; padding: 2px 4px; color: #b
 .arrangement-layout { display: grid; grid-template-columns: 218px minmax(0, 1fr); min-height: 270px; }
 .source-sidebar { min-width: 0; border-right: 1px solid var(--stroke); background: #1b1c1f; padding: 0 10px 12px; }
 .source-sidebar-heading { height: 43px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--stroke); color: #c4c5c2; font-family: var(--mono); font-size: 9px; letter-spacing: .8px; }
-.sound-library-search { position: sticky; top: 0; z-index: 12; margin: 0; border-bottom: 1px solid #303136; background: #1b1c1f; padding: 9px 0 10px; }
+.sound-library-search { position: relative; z-index: 12; margin: 0 0 10px; }
 .sound-library-search-label { display: block; margin-bottom: 6px; color: #85868b; font-family: var(--mono); font-size: 7px; letter-spacing: .65px; }
 .sound-library-search-control { position: relative; display: flex; align-items: center; }
 .sound-library-search-control svg { position: absolute; left: 9px; width: 14px; height: 14px; fill: none; stroke: #8e9096; stroke-width: 1.5; stroke-linecap: round; pointer-events: none; }
@@ -305,7 +305,7 @@ kbd { border: 1px solid #393a3f; border-radius: 3px; padding: 2px 4px; color: #b
 .instrument-kind-group { display: flex; flex-direction: column; gap: 4px; padding-left: 5px; }
 .instrument-kind-heading { margin: 4px 0 1px; color: #818287; font-family: var(--mono); font-size: 7px; font-weight: 500; letter-spacing: .55px; text-transform: uppercase; }
 .instrument-source { min-width: 0; display: grid; grid-template-columns: 6px minmax(38px, 1fr) minmax(66px, 100px); align-items: center; gap: 6px; }
-.instrument-source.is-search-target, .instrument-family-group.is-search-target, .instrument-kind-group.is-search-target { border-radius: 4px; outline: 1px solid #687641; background: rgba(211,243,107,.05); }
+.instrument-source.is-search-target, .instrument-family-group.is-search-target, .instrument-kind-group.is-search-target, .step-instrument-choice.is-search-target, .step-instrument-group.is-search-target { border-radius: 4px; outline: 1px solid #687641; background: rgba(211,243,107,.05); }
 .source-color { width: 6px; height: 6px; border-radius: 2px; }
 .instrument-source-name { overflow: hidden; border: 0; background: transparent; padding: 0; color: #b6b7b8; font-size: 9px; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .instrument-source-name:hover, .instrument-source-name:focus-visible { color: #f0f1ec; outline: none; }

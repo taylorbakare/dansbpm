@@ -2052,16 +2052,12 @@
     return track.family;
   }
 
-  function openStepInstrumentPicker(targetTrackId = null, pickerMode = "step") {
-    stepInstrumentTargetTrackId = targetTrackId;
-    stepInstrumentPickerMode = pickerMode;
-    stepInstrumentPendingId = null;
-    $("#step-instrument-select").disabled = true;
+  function renderStepInstrumentLibrary(query = "") {
     const library = $("#step-instrument-library");
     library.replaceChildren();
     const groups = new Map();
-    state.tracks
-      .filter((track) => !track.sourceId && (pickerMode === "piano-roll" || track.kind !== "drumkit"))
+    getStepPickerInstruments()
+      .filter((track) => matchesInstrumentSearch(track, query))
       .forEach((track) => {
         const groupName = getStepInstrumentGroup(track);
         if (!groups.has(groupName)) groups.set(groupName, []);
@@ -2072,6 +2068,7 @@
       .forEach(([groupName, instruments]) => {
         const group = document.createElement("section");
         group.className = "step-instrument-group";
+        group.dataset.instrumentGroup = groupName;
         const heading = document.createElement("h3");
         heading.textContent = groupName;
         const choices = document.createElement("div");
@@ -2082,6 +2079,7 @@
             const choice = document.createElement("button");
             choice.className = "step-instrument-choice";
             choice.type = "button";
+            choice.dataset.soundId = instrument.id;
             choice.style.setProperty("--instrument-color", instrument.color);
             choice.textContent = instrument.name;
             choice.addEventListener("contextmenu", (event) => openSoundDurationMenu(instrument, event));
@@ -2111,6 +2109,23 @@
         group.append(heading, choices);
         library.append(group);
       });
+    if (!library.childElementCount && query) {
+      const empty = document.createElement("div");
+      empty.className = "instrument-search-empty";
+      empty.textContent = `No sounds found for "${query}".`;
+      library.append(empty);
+    }
+  }
+
+  function openStepInstrumentPicker(targetTrackId = null, pickerMode = "step") {
+    stepInstrumentTargetTrackId = targetTrackId;
+    stepInstrumentPickerMode = pickerMode;
+    stepInstrumentPendingId = null;
+    $("#step-instrument-select").disabled = true;
+    const searchInput = $("#sound-library-search-input");
+    searchInput.value = "";
+    renderSoundSearchSuggestions("");
+    renderStepInstrumentLibrary();
     $("#step-instrument-title").textContent = pickerMode === "piano-roll"
       ? "Choose a piano roll instrument"
       : targetTrackId ? "Choose a row instrument" : "Choose an instrument";
@@ -4767,10 +4782,16 @@
       track.id,
       track.sampleUrl,
       track.searchTerms,
+      getStepInstrumentGroup(track),
       getInstrumentCategory(track) === "Kicks" ? "kick kicks kick drum bass drum acoustic live" : "",
       track.sampleOneShot ? "one shot" : "",
     ].filter(Boolean).join(" "));
     return terms.every((term) => searchable.includes(term));
+  }
+
+  function getStepPickerInstruments() {
+    return state.tracks.filter((track) =>
+      !track.sourceId && (stepInstrumentPickerMode === "piano-roll" || track.kind !== "drumkit"));
   }
 
   function renderSoundSearchSuggestions(query) {
@@ -4784,9 +4805,8 @@
       return;
     }
 
-    const instruments = state.tracks.filter((track) => !track.sourceId);
-    const categories = [...new Set(instruments.flatMap((track) =>
-      [track.family, getInstrumentCategory(track)].filter(Boolean)))];
+    const instruments = getStepPickerInstruments();
+    const categories = [...new Set(instruments.map(getStepInstrumentGroup))];
     const matchingCategories = categories.filter((category) => {
       const text = normalizeSoundSearch(category);
       return normalizedQuery.split(" ").every((term) => text.includes(term));
@@ -4819,8 +4839,7 @@
     if (matchingCategories.length) {
       addHeading("CATEGORIES");
       matchingCategories.forEach((category) => {
-        const count = instruments.filter((track) =>
-          track.family === category || getInstrumentCategory(track) === category).length;
+        const count = instruments.filter((track) => getStepInstrumentGroup(track) === category).length;
         addResult(category, `${count} sound${count === 1 ? "" : "s"}`, category, "category");
       });
     }
@@ -4844,13 +4863,13 @@
     const query = result.dataset.searchQuery || "";
     $("#sound-library-search-input").value = query;
     renderSoundSearchSuggestions("");
-    renderInstrumentBrowser(query);
+    renderStepInstrumentLibrary(query);
     window.requestAnimationFrame(() => {
       const target = result.dataset.searchType === "sound"
-        ? Array.from(document.querySelectorAll(".instrument-source")).find((row) =>
+        ? Array.from(document.querySelectorAll("#step-instrument-library .step-instrument-choice")).find((row) =>
           row.dataset.soundId === result.dataset.soundId)
-        : Array.from(document.querySelectorAll(".instrument-family-group, .instrument-kind-group")).find((group) =>
-          group.dataset.family === query || group.dataset.category === query);
+        : Array.from(document.querySelectorAll("#step-instrument-library .step-instrument-group")).find((group) =>
+          group.dataset.instrumentGroup === query);
       if (!target) return;
       target.scrollIntoView({ block: "start", behavior: "smooth" });
       target.classList.add("is-search-target");
@@ -5026,15 +5045,12 @@
     });
   }
 
-  function openAssetLibrary(searchQuery = "") {
-    const query = typeof searchQuery === "string" ? searchQuery : "";
+  function openAssetLibrary() {
     captureCurrentPattern();
     captureCurrentMel();
     renderArrangementAssetBrowser();
     renderRecordingBrowser();
-    $("#sound-library-search-input").value = query;
-    renderSoundSearchSuggestions("");
-    renderInstrumentBrowser(query);
+    renderInstrumentBrowser();
     const dialog = $("#source-browser-dialog");
     if (!dialog.open) dialog.show();
   }
@@ -8609,8 +8625,10 @@
     $("#sequencer-browser-button").addEventListener("click", () => openAssetLibrary());
     const soundSearchInput = $("#sound-library-search-input");
     soundSearchInput.addEventListener("input", () => {
+      stepInstrumentPendingId = null;
+      $("#step-instrument-select").disabled = true;
       renderSoundSearchSuggestions(soundSearchInput.value);
-      renderInstrumentBrowser(soundSearchInput.value);
+      renderStepInstrumentLibrary(soundSearchInput.value);
     });
     soundSearchInput.addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
@@ -8619,7 +8637,7 @@
         if (firstResult instanceof HTMLButtonElement) navigateToSoundSearchResult(firstResult);
         else {
           renderSoundSearchSuggestions("");
-          renderInstrumentBrowser(soundSearchInput.value.trim());
+          renderStepInstrumentLibrary(soundSearchInput.value.trim());
         }
       } else if (event.key === "Escape") {
         renderSoundSearchSuggestions("");
@@ -8677,6 +8695,8 @@
       closeSoundDurationMenu();
       stepInstrumentTargetTrackId = null;
       stepInstrumentPendingId = null;
+      $("#sound-library-search-input").value = "";
+      renderSoundSearchSuggestions("");
     });
     $("#step-instrument-dialog").addEventListener("click", (event) => {
       if (event.target === $("#step-instrument-dialog")) $("#step-instrument-dialog").close();

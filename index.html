@@ -348,14 +348,6 @@
         <dialog class="source-browser-dialog" id="source-browser-dialog" aria-label="Asset library">
           <aside class="source-sidebar">
             <div class="source-sidebar-heading">ASSET LIBRARY <button id="source-browser-close" type="button" aria-label="Close asset library">×</button></div>
-            <div class="sound-library-search" id="sound-library-search">
-              <label class="sound-library-search-label" for="sound-library-search-input">SEARCH SOUNDS &amp; CATEGORIES</label>
-              <div class="sound-library-search-control">
-                <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" /><path d="m13 13 4 4" /></svg>
-                <input id="sound-library-search-input" type="search" placeholder="Try kick, guitar, or live" autocomplete="off" aria-label="Search sounds, categories, or keywords" aria-controls="sound-library-search-results" aria-expanded="false">
-              </div>
-              <div class="sound-library-search-results" id="sound-library-search-results" role="listbox" aria-label="Sound search results" hidden></div>
-            </div>
             <div class="source-section-label">PATTERNS <span id="pattern-asset-count">0</span></div>
             <div class="asset-browser" id="pattern-asset-browser"></div>
             <div class="source-section-label">MELS <span id="mel-asset-count">0</span></div>
@@ -390,6 +382,14 @@
               <h2 id="step-instrument-title">Choose an instrument</h2>
             </div>
             <button class="dialog-close" id="step-instrument-close" type="button" aria-label="Close instrument picker">×</button>
+          </div>
+          <div class="sound-library-search" id="sound-library-search">
+            <label class="sound-library-search-label" for="sound-library-search-input">SEARCH SOUNDS &amp; CATEGORIES</label>
+            <div class="sound-library-search-control">
+              <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" /><path d="m13 13 4 4" /></svg>
+              <input id="sound-library-search-input" type="search" placeholder="Try kick, guitar, or live" autocomplete="off" aria-label="Search sounds, categories, or keywords" aria-controls="sound-library-search-results" aria-expanded="false">
+            </div>
+            <div class="sound-library-search-results" id="sound-library-search-results" role="listbox" aria-label="Sound search results" hidden></div>
           </div>
           <div class="step-instrument-library" id="step-instrument-library"></div>
           <div class="step-instrument-actions">
