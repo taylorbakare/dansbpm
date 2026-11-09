@@ -687,6 +687,9 @@ kbd { border: 1px solid #393a3f; border-radius: 3px; padding: 2px 4px; color: #b
 .dj-live-ruler > span { display: grid; align-content: center; gap: 2px; color: #aeb0b6; font-family: var(--mono); font-size: 8px; }
 .dj-live-ruler small { color: #777980; font-size: 7px; }
 .dj-live-ruler canvas { display: block; width: 100%; height: 24px; }
+.dj-arrangement-scroll { display: grid; grid-template-columns: 62px minmax(0, 1fr) 68px; align-items: center; gap: 8px; padding: 0 8px; color: #aeb0b6; font-family: var(--mono); font-size: 8px; }
+.dj-arrangement-scroll input { width: 100%; min-width: 0; margin: 0; accent-color: var(--accent); }
+.dj-arrangement-scroll output { color: #888b7b; font-size: 7px; text-align: right; white-space: nowrap; }
 .dj-live-waveform-row { display: grid; grid-template-columns: 62px minmax(0, 1fr); align-items: center; gap: 8px; border: 1px solid #34353a; border-radius: 6px; background: #17181b; padding: 6px 8px; cursor: grab; touch-action: none; user-select: none; }
 .dj-live-waveform-row.is-dragging { border-color: var(--accent); cursor: grabbing; }
 .dj-live-waveform-row > span { display: grid; gap: 3px; color: var(--accent); font-family: var(--mono); font-size: 8px; }
