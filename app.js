@@ -4134,6 +4134,23 @@
     return control;
   }
 
+  function makeMixerEffectResetButton(track, effectId) {
+    const reset = document.createElement("button");
+    reset.type = "button";
+    reset.className = "quiet-button mixer-reset-effect";
+    reset.textContent = "Reset to 0";
+    reset.addEventListener("click", () => {
+      if (effectId === "eq") {
+        ["eqSub", "eqLow", "eqMid", "eqHigh", "eqAir"].forEach((band) => { track.effects[band] = 0; });
+      } else {
+        track.effects[effectId] = 0;
+      }
+      refreshMixerEffectTrack(track);
+      openMixerEffectDialog(track, effectId);
+    });
+    return reset;
+  }
+
   function openMixerEffectDialog(track, effectId) {
     ensureTrackMixerState(track);
     if (state.audioContext) ensureTrackAudio(track);
@@ -4174,6 +4191,7 @@
         }));
       });
       content.append(controls);
+      content.append(makeMixerEffectResetButton(track, effectId));
     } else {
       const controls = document.createElement("div");
       controls.className = "mixer-effect-controls";
@@ -4188,6 +4206,7 @@
         }));
       });
       content.append(controls);
+      content.append(makeMixerEffectResetButton(track, effectId));
       const remove = document.createElement("button");
       remove.type = "button";
       remove.className = "quiet-button mixer-remove-effect";
