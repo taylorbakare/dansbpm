@@ -423,6 +423,7 @@
   const PIANO_TOP_MIDI = 83;
   const PIANO_BOTTOM_MIDI = 35;
   let pianoNoteContextTargetIds = [];
+  let pianoDragPreviewSequence = 0;
   const state = {
     tracks: [],
     patterns: [],
@@ -1761,9 +1762,28 @@
     const startX = event.clientX;
     const startY = event.clientY;
     let moved = false;
+    pianoDragPreviewSequence += 1;
+    let previewedMidi = note.midi;
     const durationTicks = note.durationTicks;
     const totalTicks = state.pianoBars * PIANO_TICKS_PER_BAR;
     const noteElements = new Map(Array.from(document.querySelectorAll(".piano-roll-note"), (item) => [item.dataset.noteId, item]));
+    const previewPitch = (midi) => {
+      previewedMidi = midi;
+      const request = ++pianoDragPreviewSequence;
+      Promise.resolve().then(async () => {
+        await ensureAudio();
+        const track = getPianoTrack(note.trackId);
+        if (!track) return;
+        await loadLibrarySample(track);
+        if (request !== pianoDragPreviewSequence) return;
+        const duration = Math.max(0.12, Math.min(0.3,
+          note.durationTicks / PIANO_TICKS_PER_BAR * (240 / state.bpm)));
+        playPianoNote(track, state.audioContext.currentTime + 0.01, midi, duration,
+          note.velocity ?? 0.8, track, null, note);
+      }).catch((error) => {
+        if (request === pianoDragPreviewSequence) showToast(error.message || "The instrument could not be played.");
+      });
+    };
     const update = (moveEvent) => {
       moved ||= Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) >= 4;
       if (!moved) return;
@@ -1792,6 +1812,7 @@
           original.note.startTick = original.startTick + deltaTicks;
           original.note.midi = original.midi + deltaPitch;
         });
+        if (note.midi !== previewedMidi) previewPitch(note.midi);
       }
       originals.forEach((original) => {
         const target = noteElements.get(original.note.id);
