@@ -5004,13 +5004,14 @@
   }
 
   function openAssetLibrary(searchQuery = "") {
+    const query = typeof searchQuery === "string" ? searchQuery : "";
     captureCurrentPattern();
     captureCurrentMel();
     renderArrangementAssetBrowser();
     renderRecordingBrowser();
-    $("#topbar-sound-search-input").value = searchQuery;
+    $("#topbar-sound-search-input").value = query;
     renderSoundSearchSuggestions("");
-    renderInstrumentBrowser(searchQuery);
+    renderInstrumentBrowser(query);
     const dialog = $("#source-browser-dialog");
     if (!dialog.open) dialog.show();
   }
@@ -8581,8 +8582,8 @@
       event.dataTransfer.setData("application/x-pulsegrid-pattern-source", JSON.stringify({ patternId: pattern.id }));
       event.dataTransfer.effectAllowed = "copy";
     });
-    $("#assets-button").addEventListener("click", openAssetLibrary);
-    $("#sequencer-browser-button").addEventListener("click", openAssetLibrary);
+    $("#assets-button").addEventListener("click", () => openAssetLibrary());
+    $("#sequencer-browser-button").addEventListener("click", () => openAssetLibrary());
     const soundSearchInput = $("#topbar-sound-search-input");
     soundSearchInput.addEventListener("input", () => {
       renderSoundSearchSuggestions(soundSearchInput.value);
@@ -8682,7 +8683,7 @@
     $("#new-pattern-button").addEventListener("click", createPattern);
     $("#new-pattern-sequencer-button").addEventListener("click", createPattern);
     $("#add-pattern-button").addEventListener("click", () => addPatternClip());
-    $("#source-browser-button").addEventListener("click", openAssetLibrary);
+    $("#source-browser-button").addEventListener("click", () => openAssetLibrary());
     $("#source-browser-close").addEventListener("click", () => $("#source-browser-dialog").close());
     $("#source-browser-dialog").addEventListener("close", closeSoundDurationMenu);
     $("#import-recording-button").addEventListener("click", () => requestRecordingImport());
