@@ -412,6 +412,7 @@
   const toast = $("#toast");
   let stepInstrumentTargetTrackId = null;
   let stepInstrumentPickerMode = "step";
+  let stepInstrumentPendingId = null;
 
   function makeTracks() {
     const tracks = [...TRACKS, ...LIBRARY_TRACKS].map((definition) => {
@@ -1890,6 +1891,8 @@
   function openStepInstrumentPicker(targetTrackId = null, pickerMode = "step") {
     stepInstrumentTargetTrackId = targetTrackId;
     stepInstrumentPickerMode = pickerMode;
+    stepInstrumentPendingId = null;
+    $("#step-instrument-select").disabled = true;
     const library = $("#step-instrument-library");
     library.replaceChildren();
     const groups = new Map();
@@ -1918,18 +1921,17 @@
             choice.style.setProperty("--instrument-color", instrument.color);
             choice.textContent = instrument.name;
             choice.addEventListener("click", () => {
+              library.querySelectorAll(".step-instrument-choice.is-selected").forEach((selectedChoice) => {
+                selectedChoice.classList.remove("is-selected");
+                selectedChoice.setAttribute("aria-pressed", "false");
+              });
+              choice.classList.add("is-selected");
+              choice.setAttribute("aria-pressed", "true");
+              stepInstrumentPendingId = instrument.id;
+              $("#step-instrument-select").disabled = false;
               previewInstrumentSound(instrument);
-              if (stepInstrumentPickerMode === "piano-roll") {
-                selectPianoInstrument(instrument.id);
-              } else {
-                const added = stepInstrumentTargetTrackId
-                  ? replacePatternInstrument(stepInstrumentTargetTrackId, instrument.id)
-                  : addPatternInstrument(instrument.id);
-                if (!added) return;
-              }
-              $("#step-instrument-dialog").close();
-              stepInstrumentTargetTrackId = null;
             });
+            choice.setAttribute("aria-pressed", "false");
             choices.append(choice);
           });
         group.append(heading, choices);
@@ -1939,6 +1941,23 @@
       ? "Choose a piano roll instrument"
       : targetTrackId ? "Choose a row instrument" : "Choose an instrument";
     $("#step-instrument-dialog").showModal();
+  }
+
+  function applyStepInstrumentSelection() {
+    const instrument = state.tracks.find((track) => track.id === stepInstrumentPendingId && !track.sourceId);
+    if (!instrument) {
+      showToast("Choose an instrument before selecting.");
+      return;
+    }
+    if (stepInstrumentPickerMode === "piano-roll") {
+      selectPianoInstrument(instrument.id);
+    } else {
+      const applied = stepInstrumentTargetTrackId
+        ? replacePatternInstrument(stepInstrumentTargetTrackId, instrument.id)
+        : addPatternInstrument(instrument.id);
+      if (!applied) return;
+    }
+    $("#step-instrument-dialog").close();
   }
 
   function replacePatternInstrument(trackId, sourceId) {
@@ -7967,7 +7986,11 @@
     $("#assets-button").addEventListener("click", openAssetLibrary);
     $("#sequencer-browser-button").addEventListener("click", openAssetLibrary);
     $("#step-instrument-close").addEventListener("click", () => $("#step-instrument-dialog").close());
-    $("#step-instrument-dialog").addEventListener("close", () => { stepInstrumentTargetTrackId = null; });
+    $("#step-instrument-select").addEventListener("click", applyStepInstrumentSelection);
+    $("#step-instrument-dialog").addEventListener("close", () => {
+      stepInstrumentTargetTrackId = null;
+      stepInstrumentPendingId = null;
+    });
     $("#step-instrument-dialog").addEventListener("click", (event) => {
       if (event.target === $("#step-instrument-dialog")) $("#step-instrument-dialog").close();
     });
