@@ -3388,11 +3388,12 @@
     crossfader: 50,
     liveSlots: Array(8).fill(null),
     decks: {
-      A: { sourceKey: "", volume: 0.8, filter: 20000, playing: false, timerId: null, audioSource: null, filterNode: null, gainNode: null, nextStepTime: 0, stepIndex: 0 },
-      B: { sourceKey: "", volume: 0.8, filter: 20000, playing: false, timerId: null, audioSource: null, filterNode: null, gainNode: null, nextStepTime: 0, stepIndex: 0 },
+      A: { sourceKey: "", volume: 0.8, filter: 20000, pitch: 0, reverse: false, playing: false, timerId: null, audioSource: null, filterNode: null, gainNode: null, nextStepTime: 0, stepIndex: 0, scratchRate: 1, isScratching: false },
+      B: { sourceKey: "", volume: 0.8, filter: 20000, pitch: 0, reverse: false, playing: false, timerId: null, audioSource: null, filterNode: null, gainNode: null, nextStepTime: 0, stepIndex: 0, scratchRate: 1, isScratching: false },
     },
   };
   let djVisualTimer = null;
+  const reversedDjBuffers = new WeakMap();
 
   function getDjStorageKey() {
     return `${getProjectStorageKey(state.projectId)}:dj`;
@@ -3406,7 +3407,13 @@
         liveSlots: djState.liveSlots,
         decks: Object.fromEntries(DJ_DECK_IDS.map((deckId) => {
           const deck = djState.decks[deckId];
-          return [deckId, { sourceKey: deck.sourceKey, volume: deck.volume, filter: deck.filter }];
+          return [deckId, {
+            sourceKey: deck.sourceKey,
+            volume: deck.volume,
+            filter: deck.filter,
+            pitch: deck.pitch,
+            reverse: deck.reverse,
+          }];
         })),
       };
       window.localStorage.setItem(getDjStorageKey(), JSON.stringify(saved));
@@ -3436,6 +3443,8 @@
         if (typeof savedDeck.sourceKey === "string") deck.sourceKey = savedDeck.sourceKey;
         if (Number.isFinite(savedDeck.volume)) deck.volume = Math.max(0, Math.min(1, savedDeck.volume));
         if (Number.isFinite(savedDeck.filter)) deck.filter = Math.max(200, Math.min(20000, savedDeck.filter));
+        if (Number.isFinite(savedDeck.pitch)) deck.pitch = Math.max(-8, Math.min(8, savedDeck.pitch));
+        deck.reverse = savedDeck.reverse === true;
       });
     } catch (error) {
       showToast(`Could not restore DJ set: ${error.message || "saved data is unavailable"}`);
@@ -3505,6 +3514,7 @@
       if (select.value !== deck.sourceKey) deck.sourceKey = "";
       $(`#dj-volume-${suffix}`).value = String(Math.round(deck.volume * 100));
       $(`#dj-filter-${suffix}`).value = String(deck.filter);
+      $(`#dj-pitch-${suffix}`).value = String(deck.pitch);
       updateDjDeckUI(deckId);
     });
     $("#dj-crossfader").value = String(djState.crossfader);
@@ -3638,6 +3648,7 @@
   }
 
   function drawDjLiveView() {
+    DJ_DECK_IDS.forEach(updateDjDeckDisplays);
     document.querySelectorAll(".dj-live-timeline").forEach((canvas) => {
       const deckId = canvas.dataset.deck;
       const data = getDjTimelineData(deckId);
@@ -3667,7 +3678,7 @@
       let visibleSpan;
       let start;
       if (data.kind === "ticks") {
-        const tickRate = state.bpm / 60 * 8;
+        const tickRate = state.bpm / 60 * 8 * getDjRate(deck);
         position = (deck.visualStartTick || 0) +
           (deck.playing ? Math.max(0, now - (deck.visualStartTime || now)) * tickRate : 0);
         visibleSpan = data.loopTicks * 2;
@@ -3726,7 +3737,8 @@
           }));
           events.forEach((event) => {
             for (let loopIndex = firstLoop; loopIndex <= lastLoop; loopIndex += 1) {
-              const absoluteTick = loopIndex * loop + event.tick;
+              const eventTick = deck.reverse ? Math.max(0, loop - 1 - event.tick) : event.tick;
+              const absoluteTick = loopIndex * loop + eventTick;
               if (absoluteTick + event.duration < start || absoluteTick > start + visibleSpan) continue;
               const x = toX(absoluteTick);
               const eventWidth = Math.max(3, event.duration / visibleSpan * timelineWidth);
@@ -3751,8 +3763,9 @@
             for (let bin = 0; bin < binCount; bin += 1) {
               const absoluteTime = loopStart + bin / binCount * data.loopSeconds;
               if (absoluteTime < start || absoluteTime > start + visibleSpan) continue;
-              const sampleStart = firstSample + Math.floor(bin / binCount * sampleCount);
-              const sampleEnd = Math.min(samples.length, firstSample + Math.floor((bin + 1) / binCount * sampleCount));
+              const sourceBin = deck.reverse ? binCount - 1 - bin : bin;
+              const sampleStart = firstSample + Math.floor(sourceBin / binCount * sampleCount);
+              const sampleEnd = Math.min(samples.length, firstSample + Math.floor((sourceBin + 1) / binCount * sampleCount));
               const sampleStride = Math.max(1, Math.floor((sampleEnd - sampleStart) / 24));
               let peak = 0;
               for (let sample = sampleStart; sample < Math.max(sampleStart + 1, sampleEnd); sample += sampleStride) {
@@ -3799,6 +3812,71 @@
     playButton.textContent = deck.playing ? "Pause" : "Play";
     playButton.classList.toggle("is-playing", deck.playing);
     playButton.setAttribute("aria-pressed", String(deck.playing));
+    const platter = $(`#dj-platter-${suffix}`);
+    platter.classList.toggle("is-playing", deck.playing);
+    platter.classList.toggle("is-reverse", deck.reverse);
+    platter.classList.toggle("is-scratching", deck.isScratching);
+    platter.style.setProperty("--dj-spin-duration", `${1.8 / Math.max(0.25, getDjRate(deck))}s`);
+    $(`#dj-reverse-${suffix}`).setAttribute("aria-pressed", String(deck.reverse));
+    updateDjDeckDisplays(deckId);
+  }
+
+  function getDjRate(deck) {
+    return Math.max(0.25, (1 + deck.pitch / 100) * (deck.scratchRate || 1));
+  }
+
+  function getReversedDjBuffer(buffer) {
+    const cached = reversedDjBuffers.get(buffer);
+    if (cached) return cached;
+    const reversed = state.audioContext.createBuffer(buffer.numberOfChannels, buffer.length, buffer.sampleRate);
+    for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
+      const source = buffer.getChannelData(channel);
+      const destination = reversed.getChannelData(channel);
+      for (let index = 0; index < source.length; index += 1) {
+        destination[index] = source[source.length - 1 - index];
+      }
+    }
+    reversedDjBuffers.set(buffer, reversed);
+    return reversed;
+  }
+
+  function updateDjDeckDisplays(deckId) {
+    const deck = djState.decks[deckId];
+    const suffix = deckId.toLowerCase();
+    const source = getDjSource(deck.sourceKey);
+    $(`#dj-track-name-${suffix}`).textContent = source?.name || "No track loaded";
+    $(`#dj-pitch-value-${suffix}`).textContent = `${deck.pitch >= 0 ? "+" : ""}${deck.pitch.toFixed(1)}%`;
+    const timeline = source ? getDjTimelineData(deckId) : null;
+    const now = state.audioContext?.currentTime || 0;
+    let display = "00:00";
+    if (timeline?.kind === "ticks") {
+      const ticks = (deck.visualStartTick || 0) +
+        (deck.playing ? Math.max(0, now - (deck.visualStartTime || now)) * state.bpm / 60 * 8 * getDjRate(deck) : 0);
+      const loopTick = ticks % timeline.loopTicks;
+      const bar = Math.floor(loopTick / PIANO_TICKS_PER_BAR) + 1;
+      const beat = Math.floor(loopTick % PIANO_TICKS_PER_BAR / 8) + 1;
+      display = `B${bar} · ${beat}`;
+    } else if (timeline?.loopSeconds > 0) {
+      const elapsed = deck.playing ? Math.max(0, now - (deck.visualStartTime || now)) * (deck.audioSource?.playbackRate.value || 1) : 0;
+      const loopPosition = elapsed % timeline.loopSeconds;
+      const seconds = deck.reverse
+        ? timeline.offset + timeline.loopSeconds - loopPosition
+        : timeline.offset + loopPosition;
+      const minutes = Math.floor(seconds / 60).toString().padStart(2, "0");
+      display = `${minutes}:${Math.floor(seconds % 60).toString().padStart(2, "0")}`;
+    }
+    $(`#dj-time-${suffix}`).textContent = display;
+  }
+
+  function toggleDjReverse(deckId) {
+    const deck = djState.decks[deckId];
+    const wasPlaying = deck.playing;
+    if (wasPlaying) stopDjDeck(deckId);
+    deck.reverse = !deck.reverse;
+    if (wasPlaying) startDjDeck(deckId);
+    updateDjDeckUI(deckId);
+    renderDjLiveView();
+    saveDjState();
   }
 
   function setActiveDjDeck(deckId) {
@@ -3835,6 +3913,9 @@
     const deck = djState.decks[deckId];
     if (deck.timerId !== null) window.clearInterval(deck.timerId);
     deck.timerId = null;
+    deck.isScratching = false;
+    deck.scratchPointerId = null;
+    deck.scratchRate = 1;
     if (deck.nudgeTimer !== null) window.clearTimeout(deck.nudgeTimer);
     deck.nudgeTimer = null;
     if (deck.audioSource) {
@@ -3871,28 +3952,35 @@
           return;
         }
         const offset = Math.max(0, clip.sourceOffsetSeconds || 0);
-        const loopEnd = Math.min(clip.buffer.duration, offset + (clip.durationSeconds ?? clip.buffer.duration));
-        if (loopEnd <= offset) {
+        const duration = Math.min(clip.buffer.duration - offset, clip.durationSeconds ?? clip.buffer.duration);
+        if (duration <= 0) {
           deck.playing = false;
           showToast("This audio clip has no playable duration.");
           updateDjDeckUI(deckId);
           return;
         }
+        const buffer = deck.reverse ? getReversedDjBuffer(clip.buffer) : clip.buffer;
+        const loopStart = deck.reverse ? clip.buffer.duration - (offset + duration) : offset;
+        const loopEnd = loopStart + duration;
         const player = state.audioContext.createBufferSource();
-        player.buffer = clip.buffer;
+        player.buffer = buffer;
         player.loop = true;
-        player.loopStart = offset;
+        player.loopStart = loopStart;
         player.loopEnd = loopEnd;
+        player.playbackRate.value = getDjRate(deck);
         player.connect(deck.filterNode);
         player.onended = () => {
           if (deck.audioSource === player) deck.audioSource = null;
         };
-        player.start(startTime, offset);
+        player.start(startTime, loopStart);
         deck.audioSource = player;
         deck.visualStartTime = startTime;
         deck.visualStartSeconds = 0;
       } else {
-        deck.stepIndex = Number.isFinite(deck.pendingStepIndex) ? deck.pendingStepIndex : 0;
+        const cycleTicks = getDjCycleTicks(source);
+        deck.stepIndex = Number.isFinite(deck.pendingStepIndex)
+          ? deck.pendingStepIndex
+          : deck.reverse ? cycleTicks - 1 : 0;
         deck.pendingStepIndex = undefined;
         deck.visualStartTime = startTime;
         deck.visualStartTick = deck.stepIndex;
@@ -3925,12 +4013,13 @@
     const source = getDjSource(deck.sourceKey);
     if (!source || source.type === "audio") return;
     const now = state.audioContext.currentTime;
+    const tickDuration = getSchedulerTickDuration() / getDjRate(deck);
     while (deck.nextStepTime < now + 0.12) {
       const clockStep = deck.stepIndex;
       if (source.type === "pattern") {
         const pattern = source.item;
         getGridEventsForTick(pattern, clockStep).forEach(({ step, tickOffset }) => {
-          const eventTime = deck.nextStepTime + tickOffset * getSchedulerTickDuration();
+          const eventTime = deck.nextStepTime + tickOffset * tickDuration;
           const eventStep = step % getGridStepCount(pattern);
           const hasSolo = state.tracks.some((track) => track.solo);
           getPatternTrackIds(pattern).forEach((trackId) => {
@@ -3940,7 +4029,7 @@
               Array.isArray(pattern.stepPianoNotes?.[trackId])) return;
             const variant = pattern.variants?.[trackId] || "classic";
             triggerTrack(track, getTrackStepTime(track, eventStep, pattern, eventTime),
-              eventStep, variant, getNoteDuration(pattern), track, deck.filterNode);
+              eventStep, variant, getNoteDuration(pattern) / getDjRate(deck), track, deck.filterNode);
           });
         });
         Object.entries(source.item.stepPianoNotes || {}).forEach(([trackId, notes]) => {
@@ -3948,7 +4037,7 @@
           if (!track || !Array.isArray(notes)) return;
           notes.filter((note) => Math.floor(note.startTick) === clockStep).forEach((note) => {
             playPianoNote(track, deck.nextStepTime, note.midi,
-              note.durationTicks * getSchedulerTickDuration(), note.velocity ?? 0.8,
+              note.durationTicks * tickDuration, note.velocity ?? 0.8,
               track, deck.filterNode, note);
           });
         });
@@ -3959,17 +4048,17 @@
         if (instrument) {
           mel.notes.filter((note) => Math.floor(note.startTick) === clockStep).forEach((note) => {
             playPianoNote(instrument, deck.nextStepTime, note.midi,
-              note.durationTicks * getSchedulerTickDuration(), note.velocity ?? 0.8,
+              note.durationTicks * tickDuration, note.velocity ?? 0.8,
               instrument, deck.filterNode, note);
           });
         }
-        deck.stepIndex = (clockStep + 1) % loopTicks;
+        deck.stepIndex = (clockStep + (deck.reverse ? -1 : 1) + loopTicks) % loopTicks;
       }
       if (source.type === "pattern") {
         const cycleTicks = Math.max(1, (source.item.steps || 16) * 2);
-        deck.stepIndex = (clockStep + 1) % cycleTicks;
+        deck.stepIndex = (clockStep + (deck.reverse ? -1 : 1) + cycleTicks) % cycleTicks;
       }
-      deck.nextStepTime += getSchedulerTickDuration();
+      deck.nextStepTime += tickDuration;
     }
   }
 
@@ -3983,9 +4072,12 @@
     const startTime = other.playing && other.timerId !== null
       ? Math.max(now + 0.04, other.nextStepTime)
       : Math.ceil((now + 0.02) / beatDuration) * beatDuration;
-    deck.pendingStepIndex = other.playing && deckCycleTicks && otherCycleTicks
+    const syncedPhase = other.playing && deckCycleTicks && otherCycleTicks
       ? Math.floor((other.stepIndex % otherCycleTicks) / otherCycleTicks * deckCycleTicks)
       : 0;
+    deck.pendingStepIndex = deck.reverse && deckCycleTicks
+      ? (deckCycleTicks - 1 - syncedPhase + deckCycleTicks) % deckCycleTicks
+      : syncedPhase;
     deck.syncedStartTime = startTime;
     if (deck.playing) {
       const source = getDjSource(deck.sourceKey);
@@ -4005,16 +4097,16 @@
   function nudgeDjDeck(deckId, direction) {
     const deck = djState.decks[deckId];
     if (deck.audioSource && state.audioContext) {
-      deck.audioSource.playbackRate.setTargetAtTime(direction > 0 ? 1.02 : 0.98, state.audioContext.currentTime, 0.01);
+      deck.audioSource.playbackRate.setTargetAtTime(getDjRate(deck) * (direction > 0 ? 1.02 : 0.98), state.audioContext.currentTime, 0.01);
       if (deck.nudgeTimer !== null) window.clearTimeout(deck.nudgeTimer);
       deck.nudgeTimer = window.setTimeout(() => {
         if (deck.audioSource && state.audioContext) {
-          deck.audioSource.playbackRate.setTargetAtTime(1, state.audioContext.currentTime, 0.04);
+          deck.audioSource.playbackRate.setTargetAtTime(getDjRate(deck), state.audioContext.currentTime, 0.04);
         }
         deck.nudgeTimer = null;
       }, 250);
     } else if (deck.timerId !== null) {
-      deck.nextStepTime -= direction * getSchedulerTickDuration();
+      deck.nextStepTime -= direction * getSchedulerTickDuration() / getDjRate(deck);
       const now = state.audioContext.currentTime;
       const currentTick = (deck.visualStartTick || 0) +
         Math.max(0, now - (deck.visualStartTime || now)) * state.bpm / 60 * 8;
@@ -4136,6 +4228,66 @@
         applyDjMixer();
       });
       $(`#dj-filter-${suffix}`).addEventListener("change", saveDjState);
+      $(`#dj-pitch-${suffix}`).addEventListener("input", (event) => {
+        const deck = djState.decks[deckId];
+        deck.pitch = Number(event.target.value);
+        if (deck.audioSource && state.audioContext) {
+          deck.audioSource.playbackRate.setTargetAtTime(getDjRate(deck), state.audioContext.currentTime, 0.015);
+        }
+        updateDjDeckUI(deckId);
+      });
+      $(`#dj-pitch-${suffix}`).addEventListener("change", saveDjState);
+
+      const platter = $(`#dj-platter-${suffix}`);
+      platter.addEventListener("focus", () => setActiveDjDeck(deckId));
+      platter.addEventListener("click", (event) => {
+        if (event.detail === 0) toggleDjDeck(deckId);
+      });
+      platter.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0 || !djState.decks[deckId].playing) return;
+        event.preventDefault();
+        setActiveDjDeck(deckId);
+        const bounds = platter.getBoundingClientRect();
+        const angle = Math.atan2(event.clientY - bounds.top - bounds.height / 2,
+          event.clientX - bounds.left - bounds.width / 2);
+        const deck = djState.decks[deckId];
+        deck.isScratching = true;
+        deck.scratchPointerId = event.pointerId;
+        deck.scratchLastAngle = angle;
+        deck.scratchRate = 1;
+        platter.setPointerCapture(event.pointerId);
+        updateDjDeckUI(deckId);
+      });
+      platter.addEventListener("pointermove", (event) => {
+        const deck = djState.decks[deckId];
+        if (!deck.isScratching || deck.scratchPointerId !== event.pointerId) return;
+        const bounds = platter.getBoundingClientRect();
+        const angle = Math.atan2(event.clientY - bounds.top - bounds.height / 2,
+          event.clientX - bounds.left - bounds.width / 2);
+        let delta = angle - deck.scratchLastAngle;
+        if (delta > Math.PI) delta -= Math.PI * 2;
+        else if (delta < -Math.PI) delta += Math.PI * 2;
+        deck.scratchLastAngle = angle;
+        deck.scratchRate = Math.max(0.25, Math.min(2.5, 1 + delta * 1.5));
+        if (deck.audioSource && state.audioContext) {
+          deck.audioSource.playbackRate.setTargetAtTime(getDjRate(deck), state.audioContext.currentTime, 0.005);
+        }
+        updateDjDeckUI(deckId);
+      });
+      const finishScratch = (event) => {
+        const deck = djState.decks[deckId];
+        if (!deck.isScratching || deck.scratchPointerId !== event.pointerId) return;
+        deck.isScratching = false;
+        deck.scratchPointerId = null;
+        deck.scratchRate = 1;
+        if (deck.audioSource && state.audioContext) {
+          deck.audioSource.playbackRate.setTargetAtTime(getDjRate(deck), state.audioContext.currentTime, 0.04);
+        }
+        updateDjDeckUI(deckId);
+      };
+      platter.addEventListener("pointerup", finishScratch);
+      platter.addEventListener("pointercancel", finishScratch);
+      $(`#dj-reverse-${suffix}`).addEventListener("click", () => toggleDjReverse(deckId));
     });
     document.querySelectorAll(".dj-nudge").forEach((button) => {
       button.addEventListener("click", () => nudgeDjDeck(button.dataset.deck, Number(button.dataset.direction)));
