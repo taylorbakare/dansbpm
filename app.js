@@ -241,7 +241,7 @@
     { id: "bass-sub", name: "Sub Bass", kind: "instrument", family: "Bass", color: "#78a6d4", volume: 0.72, patch: { wave: "sine", cutoff: 420, attack: 0.01, decay: 0.2, sustain: 0.48, release: 0.16 } },
     { id: "bass-fuzz", name: "Fuzz Bass", kind: "instrument", family: "Bass", color: "#d47e78", volume: 0.68, patch: { wave: "sawtooth", cutoff: 1500, attack: 0.004, decay: 0.18, sustain: 0.32, release: 0.12, detune: 5 } },
   ];
-  function makeLiveSampleTracks(family, category, color, entries) {
+  function makeLiveSampleTracks(family, category, color, entries, volume = 0.68) {
     return entries.map(([id, name, file, rootMidi]) => ({
       id: `${family.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${id}`,
       name,
@@ -254,7 +254,7 @@
       sampleOneShot: true,
       subtitle: "Recorded live performance",
       color,
-      volume: 0.68,
+      volume,
     }));
   }
   const LIVE_SAMPLE_TRACKS = [
@@ -267,11 +267,11 @@
       ["virtuosity-kick-bleed-medium", "Virtuosity Kick · Medium · Snare Bleed", "virtuosity/oh_kick_snon_vl2_rr1.ogg", 36],
       ["virtuosity-kick-bleed-strong", "Virtuosity Kick · Strong · Snare Bleed", "virtuosity/oh_kick_snon_vl3_rr1.ogg", 36],
       ["virtuosity-kick-bleed-hard", "Virtuosity Kick · Hard · Snare Bleed", "virtuosity/oh_kick_snon_vl4_rr1.ogg", 36],
-    ]),
+    ], 0.86),
     ...makeLiveSampleTracks("Live Drums", "Kicks", "#d4f16c", [
       ["double-kick-1", "Live Double Kick Take 1", "double_kick1.mp3", 36],
       ["double-kick-2", "Live Double Kick Take 2", "double_kick2.mp3", 36],
-    ]),
+    ], 0.86),
     ...makeLiveSampleTracks("Live Drums", "Claps", "#e58b7a", [
       ["clap-1", "Studio Clap Take 1", "Clap1.mp3", 60],
       ["clap-2", "Studio Clap Take 2", "Clap2.mp3", 60],
