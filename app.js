@@ -388,6 +388,7 @@
   const PROJECTS_KEY = `${STORAGE_KEY}-projects`;
   const PROJECT_STORAGE_PREFIX = `${STORAGE_KEY}-project-`;
   const USERS_KEY = `${STORAGE_KEY}-users`;
+  const EFFECT_PRESETS_STORAGE_PREFIX = `${STORAGE_KEY}-effect-presets-`;
   const ACTIVE_USER_KEY = `${STORAGE_KEY}-active-user`;
   const OPEN_PROJECTS_KEY = `${STORAGE_KEY}-open-projects`;
   const DEFAULT_USERS = [
@@ -498,6 +499,7 @@
     masterGain: null,
     masterTrack: null,
     effectTracks: [],
+    effectPresets: [],
     schedulerId: null,
     nextStepTime: 0,
     stepIndex: 0,
@@ -4355,6 +4357,83 @@
     renderMixer();
   }
 
+  function getEffectPresetsStorageKey() {
+    return `${EFFECT_PRESETS_STORAGE_PREFIX}${state.currentUser}`;
+  }
+
+  function loadEffectPresets() {
+    state.effectPresets = [];
+    if (!state.currentUser) return;
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(getEffectPresetsStorageKey()) || "[]");
+      if (!Array.isArray(saved)) throw new Error("saved presets are invalid");
+      state.effectPresets = saved
+        .filter((preset) => typeof preset?.id === "string" && typeof preset?.name === "string" && preset.name.trim())
+        .map((preset) => ({
+          id: preset.id,
+          name: preset.name.trim(),
+          effects: makeDefaultEffects(preset.effects),
+          effectSettings: makeDefaultEffectSettings(preset.effectSettings),
+          effectChain: Array.isArray(preset.effectChain)
+            ? [...new Set(preset.effectChain.filter((id) => EFFECT_IDS.has(id)))]
+            : [],
+        }));
+    } catch (error) {
+      showToast(`Could not load effects presets: ${error.message || "browser storage is unavailable."}`);
+    }
+  }
+
+  function persistEffectPresets(presets) {
+    if (!state.currentUser) {
+      showToast("Choose a profile before saving effects presets.");
+      return false;
+    }
+    try {
+      window.localStorage.setItem(getEffectPresetsStorageKey(), JSON.stringify(presets));
+      return true;
+    } catch (error) {
+      showToast(`Could not save effects preset: ${error.message || "browser storage is unavailable."}`);
+      return false;
+    }
+  }
+
+  function saveEffectTrackPreset(track) {
+    ensureTrackMixerState(track);
+    const name = window.prompt("Save effects preset", track.name)?.trim();
+    if (!name) return;
+    const existing = state.effectPresets.find((preset) => preset.name.toLowerCase() === name.toLowerCase());
+    if (existing && !window.confirm(`Replace the "${existing.name}" effects preset?`)) return;
+    const preset = {
+      id: existing?.id || makeId(),
+      name,
+      effects: makeDefaultEffects(track.effects),
+      effectSettings: makeDefaultEffectSettings(track.effectSettings),
+      effectChain: [...track.effectChain],
+    };
+    const presets = existing
+      ? state.effectPresets.map((item) => item.id === existing.id ? preset : item)
+      : [...state.effectPresets, preset];
+    if (!persistEffectPresets(presets)) return;
+    state.effectPresets = presets;
+    showToast(`Saved "${name}" effects preset.`);
+    renderMixer();
+  }
+
+  function applyEffectTrackPreset(track, presetId) {
+    const preset = state.effectPresets.find((item) => item.id === presetId);
+    if (!state.effectTracks.includes(track) || !preset) return;
+    track.effects = makeDefaultEffects(preset.effects);
+    track.effectSettings = makeDefaultEffectSettings(preset.effectSettings);
+    track.effectChain = [...preset.effectChain];
+    if (state.audioContext) {
+      ensureTrackAudio(track);
+      rebuildTrackEffectChain(track);
+    }
+    saveState();
+    renderMixer();
+    showToast(`Applied "${preset.name}" to ${track.name}.`);
+  }
+
   function setEffectTrackRouting(track, sourceTrackId, routed) {
     if (routed) {
       state.effectTracks.forEach((effectTrack) => {
@@ -4466,6 +4545,41 @@
         const effectId = event.dataTransfer?.getData("application/x-dansbpm-effect");
         if (effectId) addMixerEffect(track, effectId);
       });
+      if (track.kind === "mixer-effects") {
+        const presetControls = document.createElement("div");
+        presetControls.className = "mixer-effect-presets";
+        const savePresetButton = document.createElement("button");
+        savePresetButton.className = "mixer-track-action";
+        savePresetButton.type = "button";
+        savePresetButton.textContent = "Save preset";
+        savePresetButton.setAttribute("aria-label", `Save ${track.name} effects as a preset`);
+        savePresetButton.addEventListener("click", () => saveEffectTrackPreset(track));
+        const presetSelect = document.createElement("select");
+        presetSelect.setAttribute("aria-label", `Saved effects presets for ${track.name}`);
+        const placeholder = document.createElement("option");
+        placeholder.value = "";
+        placeholder.textContent = state.effectPresets.length ? "Choose preset…" : "No saved presets";
+        presetSelect.append(placeholder);
+        state.effectPresets.forEach((preset) => {
+          const option = document.createElement("option");
+          option.value = preset.id;
+          option.textContent = preset.name;
+          presetSelect.append(option);
+        });
+        presetSelect.disabled = state.effectPresets.length === 0;
+        const applyPresetButton = document.createElement("button");
+        applyPresetButton.className = "mixer-track-action";
+        applyPresetButton.type = "button";
+        applyPresetButton.textContent = "Apply";
+        applyPresetButton.disabled = true;
+        applyPresetButton.setAttribute("aria-label", `Apply saved effects preset to ${track.name}`);
+        presetSelect.addEventListener("change", () => {
+          applyPresetButton.disabled = !presetSelect.value;
+        });
+        applyPresetButton.addEventListener("click", () => applyEffectTrackPreset(track, presetSelect.value));
+        presetControls.append(savePresetButton, presetSelect, applyPresetButton);
+        effectTarget.append(presetControls);
+      }
       effectTarget.append(makeMixerEffectSlots(track));
       row.append(effectTarget);
       trackList.append(row);
@@ -9178,6 +9292,7 @@
   function initialize() {
     initializeUsers();
     state.currentUser = getSessionUser();
+    loadEffectPresets();
     state.tracks = makeTracks();
     const initialPattern = makePatternSnapshot(makeId(), "Pattern 1");
     state.patterns = [initialPattern];
