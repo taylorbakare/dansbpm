@@ -4292,11 +4292,12 @@
       const liveSpan = DJ_ARRANGEMENT_BARS * 240 / state.bpm;
       const visibleSpan = isLive ? liveSpan : isSong ? loopSpan : loopSpan * 2;
       const barSeconds = 240 / state.bpm;
+      const viewStartBar = djState.arrangementViewStartBar;
       const arrangementStart = Number.isFinite(djState.arrangementStartTime)
         ? djState.arrangementStartTime
         : now;
       const start = isLive
-        ? arrangementStart + djState.arrangementViewStartBar * barSeconds
+        ? arrangementStart + viewStartBar * barSeconds
         : Math.max(0, position - visibleSpan * 0.75);
       const playheadPosition = isLive ? (djState.arrangementStopTime ?? now) : position;
       const isDragPreview = Number.isFinite(deck.dragPreviewStartTime);
@@ -4316,9 +4317,12 @@
         const samples = data.clip.buffer.getChannelData(0);
         const firstSample = Math.floor(data.offset / data.clip.buffer.duration * samples.length);
         const sampleCount = Math.max(1, Math.floor(data.loopSeconds / data.clip.buffer.duration * samples.length));
-        const barSeconds = 240 / state.bpm;
-        for (let bar = Math.floor(start / barSeconds); bar <= Math.ceil((start + visibleSpan) / barSeconds); bar += 1) {
-          const x = 8 + ((bar * barSeconds - start) / visibleSpan) * timelineWidth;
+        const firstBar = isLive ? Math.floor(viewStartBar) : Math.floor(start / barSeconds);
+        const lastBar = isLive ? Math.ceil(viewStartBar + DJ_ARRANGEMENT_BARS) : Math.ceil((start + visibleSpan) / barSeconds);
+        for (let bar = firstBar; bar <= lastBar; bar += 1) {
+          const x = isLive
+            ? 8 + (bar - viewStartBar) / DJ_ARRANGEMENT_BARS * timelineWidth
+            : 8 + ((bar * barSeconds - start) / visibleSpan) * timelineWidth;
           context.strokeStyle = "#2d3035";
           context.beginPath();
           context.moveTo(x, 2);
@@ -4349,8 +4353,12 @@
         }
       } else {
         const barSpan = isLive ? 240 / state.bpm : PIANO_TICKS_PER_BAR;
-        for (let bar = Math.floor(start / barSpan); bar <= Math.ceil((start + visibleSpan) / barSpan); bar += 1) {
-          const x = 8 + ((bar * barSpan - start) / visibleSpan) * timelineWidth;
+        const firstBar = isLive ? Math.floor(viewStartBar) : Math.floor(start / barSpan);
+        const lastBar = isLive ? Math.ceil(viewStartBar + DJ_ARRANGEMENT_BARS) : Math.ceil((start + visibleSpan) / barSpan);
+        for (let bar = firstBar; bar <= lastBar; bar += 1) {
+          const x = isLive
+            ? 8 + (bar - viewStartBar) / DJ_ARRANGEMENT_BARS * timelineWidth
+            : 8 + ((bar * barSpan - start) / visibleSpan) * timelineWidth;
           context.strokeStyle = "#2d3035";
           context.beginPath();
           context.moveTo(x, 2);
