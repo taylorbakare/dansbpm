@@ -4060,7 +4060,7 @@
     };
   }
 
-  function renderDjLiveView() {
+  function updateDjArrangementViewportUI() {
     const scroll = $("#dj-arrangement-scroll");
     const range = $("#dj-arrangement-range");
     scroll.max = String(DJ_MAX_OFFSET_BARS);
@@ -4068,6 +4068,10 @@
     const formatBar = (bar) => Number.isInteger(bar) ? String(bar) : String(Number(bar.toFixed(2)));
     const firstBar = djState.arrangementViewStartBar + 1;
     range.textContent = `BARS ${formatBar(firstBar)}–${formatBar(firstBar + DJ_ARRANGEMENT_BARS - 1)}`;
+  }
+
+  function renderDjLiveView() {
+    updateDjArrangementViewportUI();
     DJ_DECK_IDS.forEach((deckId) => {
       const data = getDjTimelineData(deckId);
       const suffix = deckId.toLowerCase();
@@ -4082,6 +4086,22 @@
       });
     });
     drawDjLiveView();
+  }
+
+  function updateDjArrangementAutoScroll() {
+    if (!DJ_DECK_IDS.some((deckId) => djState.decks[deckId].playing)) return;
+    const viewStartBar = djState.arrangementViewStartBar;
+    const positionBar = getDjArrangementPositionBar();
+    if (positionBar < viewStartBar - 0.001 ||
+      positionBar > viewStartBar + DJ_ARRANGEMENT_BARS + 0.001) return;
+    const followThreshold = viewStartBar + DJ_ARRANGEMENT_BARS - 1;
+    if (positionBar < followThreshold) return;
+    const targetViewStartBar = Math.floor((positionBar - (DJ_ARRANGEMENT_BARS - 1)) * 4 + 0.0001) / 4;
+    const nextViewStartBar = Math.min(DJ_MAX_OFFSET_BARS,
+      Math.max(viewStartBar, targetViewStartBar));
+    if (nextViewStartBar <= viewStartBar) return;
+    djState.arrangementViewStartBar = nextViewStartBar;
+    updateDjArrangementViewportUI();
   }
 
   function setDjArrangementPositionBar(bar) {
@@ -4161,6 +4181,7 @@
   }
 
   function drawDjLiveView() {
+    updateDjArrangementAutoScroll();
     drawDjArrangementRuler();
     DJ_DECK_IDS.forEach(updateDjDeckDisplays);
     document.querySelectorAll(".dj-live-timeline").forEach((canvas) => {
