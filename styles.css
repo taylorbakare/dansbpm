@@ -515,13 +515,21 @@ kbd { border: 1px solid #393a3f; border-radius: 3px; padding: 2px 4px; color: #b
 .mixer-track-button { height: 22px; border: 1px solid #38393e; border-radius: 4px; background: #202125; padding: 0 5px; color: #b6c285; font-size: 8px; cursor: pointer; }
 .mixer-track-button:hover { border-color: #687641; background: #282b22; color: var(--accent); }
 .workspace-content > .mixer-view { width: 100%; max-width: none; height: 100%; min-height: 0; margin: 0; overflow: auto; padding: 15px; }
-.mixer-heading { margin-bottom: 14px; }
+.mixer-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .mixer-heading h1 { margin: 4px 0; font-size: 18px; }
 .mixer-heading .section-subtitle { font-size: 10px; }
 .mixer-content { display: grid; min-height: 0; height: calc(100% - 75px); grid-template-columns: minmax(0, 1fr) 218px; gap: 12px; }
 .mixer-track-list { min-width: 0; display: flex; flex-direction: column; gap: 8px; overflow: auto; padding: 2px 4px 8px 2px; }
 .mixer-track-row { display: grid; min-height: 84px; flex: 0 0 auto; grid-template-columns: minmax(110px, 1fr) 54px 68px minmax(160px, 2fr); align-items: center; gap: 12px; border: 1px solid #303136; border-radius: 7px; background: #1c1d20; padding: 10px 12px; }
 .mixer-track-row.is-selected { border-color: #a4bf59; background: #22251e; box-shadow: inset 0 0 0 1px rgba(211,243,107,.12); }
+.mixer-routing-panel { display: flex; flex-direction: column; gap: 10px; border: 1px solid #3a3b40; border-radius: 7px; background: #1b1c1f; padding: 12px; }
+.mixer-routing-panel h3 { margin: 0; color: #d7d9d3; font-size: 11px; font-weight: 600; }
+.mixer-routing-panel p, .mixer-routing-empty { margin: 0; color: #85868b; font-size: 9px; }
+.mixer-routing-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px; }
+.mixer-routing-choice { display: flex; min-width: 0; align-items: center; gap: 7px; border: 1px solid #303136; border-radius: 4px; background: #222327; padding: 7px; color: #c6c7cb; font-size: 9px; cursor: pointer; }
+.mixer-routing-choice input { margin: 0; accent-color: var(--accent); }
+.mixer-routing-choice span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mixer-remove-effects-track { align-self: flex-end; }
 .mixer-track-title { min-width: 0; overflow: hidden; border: 0; background: transparent; padding: 0; color: #d7d8d4; font-size: 12px; font-weight: 600; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .mixer-track-title[aria-pressed="true"] { color: var(--accent); }
 .mixer-volume-monitor { width: 48px; height: 8px; overflow: hidden; border: 1px solid #45474d; border-radius: 3px; background: #111214; }

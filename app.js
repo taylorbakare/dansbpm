@@ -368,6 +368,7 @@
   const PIANO_TICK_WIDTH = 16;
   const MAX_ARRANGEMENT_BARS = 256;
   const DEFAULT_ARRANGEMENT_TRACK_ID = "default-track";
+  const MASTER_MIXER_TRACK_ID = "mixer-master";
   const TRACK_COLORS = ["#7cc9ff", "#ff9178", "#ee9df6", "#f6ca74", "#93e2bd"];
   const PATTERN_COLORS = ["#d3f36b", "#7cc9ff", "#ff9178", "#ee9df6", "#f6ca74", "#93e2bd", "#b5a0ff", "#f28dba"];
   const GRID_RESOLUTIONS = ["1/64", "1/32", "1/16", "1/8", "1/4"];
@@ -459,6 +460,8 @@
     currentStep: -1,
     audioContext: null,
     masterGain: null,
+    masterTrack: null,
+    effectTracks: [],
     schedulerId: null,
     nextStepTime: 0,
     stepIndex: 0,
@@ -572,6 +575,29 @@
     track.effectChain = [...new Set(activeEffects)];
     return track.effectChain;
   }
+
+  function makeMixerBusTrack(kind, saved = {}) {
+    const isMaster = kind === "mixer-master";
+    return {
+      id: isMaster ? MASTER_MIXER_TRACK_ID : saved.id || makeId(),
+      name: isMaster ? "Master" : (typeof saved.name === "string" && saved.name.trim() ? saved.name : "Effects Track"),
+      kind,
+      volume: Number.isFinite(saved.volume) ? Math.max(0, Math.min(1, saved.volume)) : 1,
+      muted: false,
+      solo: false,
+      gainNode: null,
+      effects: makeDefaultEffects(saved.effects),
+      effectSettings: makeDefaultEffectSettings(saved.effectSettings),
+      effectChain: Array.isArray(saved.effectChain) ? saved.effectChain : undefined,
+      ...(isMaster ? {} : {
+        routedTrackIds: Array.isArray(saved.routedTrackIds)
+          ? [...new Set(saved.routedTrackIds.filter((trackId) => typeof trackId === "string"))]
+          : [],
+      }),
+    };
+  }
+
+  state.masterTrack = makeMixerBusTrack("mixer-master");
 
   function getPattern(patternId = state.selectedPatternId) {
     return state.patterns.find((pattern) => pattern.id === patternId) || null;
@@ -2580,7 +2606,7 @@
       const startTime = state.audioContext.currentTime + 0.015;
       if (track.kind === "drumkit") {
         [36, 42, 38, 42, 36, 46, 38, 42].forEach((midi, index) => {
-          playPianoNote(track, startTime + index * 0.18, midi, 0.15, 0.8, track, state.masterGain);
+          playPianoNote(track, startTime + index * 0.18, midi, 0.15, 0.8, track, state.masterTrack.gainNode || state.masterGain);
         });
         return;
       }
@@ -2592,7 +2618,7 @@
         duration,
         0.8,
         track,
-        state.masterGain,
+        state.masterTrack.gainNode || state.masterGain,
       );
     } catch (error) {
       showToast(error.message || `Could not preview ${track.name}.`);
@@ -2988,9 +3014,13 @@
       state.masterGain = state.audioContext.createGain();
       state.masterGain.gain.value = 0.82;
       state.masterGain.connect(state.audioContext.destination);
+      ensureTrackAudio(state.masterTrack);
+      state.effectTracks.forEach(ensureTrackAudio);
       state.tracks.forEach(ensureSequencerTrackAudio);
       state.noiseBuffer = createNoiseBuffer(state.audioContext);
     }
+    ensureTrackAudio(state.masterTrack);
+    state.effectTracks.forEach(ensureTrackAudio);
     state.arrangementTracks.forEach(ensureArrangementTrackAudio);
     state.melTracks.forEach(ensureTrackAudio);
     state.patterns.forEach(ensureTrackAudio);
@@ -3577,6 +3607,10 @@
   function ensureTrackAudio(track) {
     ensureTrackMixerState(track);
     if (!state.audioContext) return;
+    if (track !== state.masterTrack) ensureTrackAudio(state.masterTrack);
+    if (track.kind !== "mixer-master" && track.kind !== "mixer-effects") {
+      state.effectTracks.forEach(ensureTrackAudio);
+    }
     if (track.kind === "mel") {
       const instrument = state.tracks.find((item) => item.id === track.instrumentId);
       if (instrument && instrument !== track) ensureTrackAudio(instrument);
@@ -3586,6 +3620,18 @@
       track.gainNode.gain.value = track.muted ? 0 : track.volume;
     }
     if (!track.fxRuntime) rebuildTrackEffectChain(track);
+  }
+
+  function getTrackOutputNode(track) {
+    if (track === state.masterTrack) return state.masterGain;
+    if (track.kind === "mixer-effects") return state.masterTrack?.gainNode || state.masterGain;
+    const effectTrack = state.effectTracks.find((candidate) => candidate.routedTrackIds.includes(track.id));
+    if (effectTrack) return effectTrack.gainNode || state.masterTrack?.gainNode || state.masterGain;
+    if (track.kind === "mel") {
+      const instrument = state.tracks.find((item) => item.id === track.instrumentId);
+      if (instrument && instrument !== track) return instrument.gainNode || state.masterTrack?.gainNode || state.masterGain;
+    }
+    return state.masterTrack?.gainNode || state.masterGain;
   }
 
   function rebuildTrackEffectChain(track) {
@@ -3630,8 +3676,17 @@
       output = module.output;
       track.fxRuntime.push(module);
     });
-    const instrument = track.kind === "mel" ? state.tracks.find((item) => item.id === track.instrumentId) : null;
-    output.connect(instrument?.gainNode || state.masterGain);
+    output.connect(getTrackOutputNode(track));
+  }
+
+  function rebuildMixerAudioRouting() {
+    if (!state.audioContext) return;
+    ensureTrackAudio(state.masterTrack);
+    state.effectTracks.forEach(ensureTrackAudio);
+    getMixerSourceTracks().forEach(({ track }) => {
+      ensureTrackAudio(track);
+      rebuildTrackEffectChain(track);
+    });
   }
 
   function clearTrackEffectNodes(track) {
@@ -4039,7 +4094,7 @@
     if (state.view === "mixer") renderMixer();
   }
 
-  function getMixerTracks() {
+  function getMixerSourceTracks() {
     const selectedPatternIsRoutedToCopy = state.patternClips.some((clip) =>
       clip.patternId === state.selectedPatternId && (clip.trackId || clip.patternId) !== clip.patternId);
     const patternTrackIds = new Set([
@@ -4054,21 +4109,102 @@
     ];
   }
 
+  function getMixerTracks() {
+    return [
+      { track: state.masterTrack, type: "Master" },
+      ...state.effectTracks.map((track) => ({ track, type: "Effects" })),
+      ...getMixerSourceTracks(),
+    ].filter(({ track }) => track);
+  }
+
+  function createEffectTrack() {
+    let number = 1;
+    while (state.effectTracks.some((track) => track.name === `Effects ${number}`)) number += 1;
+    const track = makeMixerBusTrack("mixer-effects", { id: makeId(), name: `Effects ${number}` });
+    state.effectTracks.push(track);
+    state.selectedMixerTrackId = track.id;
+    if (state.audioContext) {
+      ensureTrackAudio(track);
+      rebuildMixerAudioRouting();
+    }
+    saveState();
+    renderMixer();
+  }
+
+  function removeEffectTrack(track) {
+    if (!state.effectTracks.includes(track)) return;
+    disconnectTrackAudio(track);
+    state.effectTracks = state.effectTracks.filter((item) => item !== track);
+    if (state.selectedMixerTrackId === track.id) state.selectedMixerTrackId = MASTER_MIXER_TRACK_ID;
+    rebuildMixerAudioRouting();
+    saveState();
+    renderMixer();
+  }
+
+  function setEffectTrackRouting(track, sourceTrackId, routed) {
+    if (routed) {
+      state.effectTracks.forEach((effectTrack) => {
+        if (effectTrack !== track) {
+          effectTrack.routedTrackIds = effectTrack.routedTrackIds.filter((id) => id !== sourceTrackId);
+        }
+      });
+      if (!track.routedTrackIds.includes(sourceTrackId)) track.routedTrackIds.push(sourceTrackId);
+    } else {
+      track.routedTrackIds = track.routedTrackIds.filter((id) => id !== sourceTrackId);
+    }
+    rebuildMixerAudioRouting();
+    saveState();
+    renderMixer();
+  }
+
+  function makeEffectTrackRoutingControls(track) {
+    const panel = document.createElement("section");
+    panel.className = "mixer-routing-panel";
+    const heading = document.createElement("h3");
+    heading.textContent = "Route tracks through this Effects Track";
+    panel.append(heading);
+    const hint = document.createElement("p");
+    hint.textContent = "Each track routes through one Effects Track at a time.";
+    panel.append(hint);
+    const choices = document.createElement("div");
+    choices.className = "mixer-routing-choices";
+    const sources = getMixerSourceTracks();
+    if (!sources.length) {
+      const empty = document.createElement("span");
+      empty.className = "mixer-routing-empty";
+      empty.textContent = "Add a pattern, Mel, or audio track to route it here.";
+      choices.append(empty);
+    }
+    sources.forEach(({ track: sourceTrack, type }) => {
+      const label = document.createElement("label");
+      label.className = "mixer-routing-choice";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = track.routedTrackIds.includes(sourceTrack.id);
+      checkbox.addEventListener("change", () => {
+        setEffectTrackRouting(track, sourceTrack.id, checkbox.checked);
+      });
+      const name = document.createElement("span");
+      name.textContent = `${sourceTrack.name} · ${type}`;
+      label.append(checkbox, name);
+      choices.append(label);
+    });
+    const removeButton = document.createElement("button");
+    removeButton.className = "quiet-button mixer-remove-effects-track";
+    removeButton.type = "button";
+    removeButton.textContent = "Remove Effects Track";
+    removeButton.addEventListener("click", () => removeEffectTrack(track));
+    panel.append(choices, removeButton);
+    return panel;
+  }
+
   function renderMixer() {
     const root = $("#mixer-content");
     const channels = getMixerTracks();
     root.replaceChildren();
     channels.forEach(({ track }) => ensureTrackMixerState(track));
-    if (!channels.length) {
-      const empty = document.createElement("p");
-      empty.className = "mixer-empty";
-      empty.textContent = "No tracks in Track View yet. Add a pattern, Mel, or recording to get started.";
-      root.append(empty);
-      syncMixerMeters();
-      return;
-    }
     if (!channels.some(({ track }) => track.id === state.selectedMixerTrackId)) {
-      state.selectedMixerTrackId = channels[0].track.id;
+      state.selectedMixerTrackId = state.masterTrack.id;
     }
 
     const trackList = document.createElement("div");
@@ -4107,6 +4243,9 @@
       effectTarget.append(makeMixerEffectSlots(track));
       row.append(effectTarget);
       trackList.append(row);
+      if (track.kind === "mixer-effects" && track.id === state.selectedMixerTrackId) {
+        trackList.append(makeEffectTrackRoutingControls(track));
+      }
     });
 
     const library = document.createElement("aside");
@@ -5842,9 +5981,11 @@
         return;
       }
       const selectedPatternTrack = state.patterns.find((item) => item.id === state.selectedMixerTrackId);
+      const selectedMixerBus = state.selectedMixerTrackId === MASTER_MIXER_TRACK_ID ||
+        state.effectTracks.some((track) => track.id === state.selectedMixerTrackId);
       let destinationTrackId = selectedPatternTrack?.id;
       if (!destinationTrackId) {
-        if (state.selectedMixerTrackId === DEFAULT_ARRANGEMENT_TRACK_ID) {
+        if (state.selectedMixerTrackId === DEFAULT_ARRANGEMENT_TRACK_ID || selectedMixerBus) {
           destinationTrackId = pattern.id;
         } else {
           const newTrackPattern = createPatternLaneCopy(pattern);
@@ -6422,14 +6563,18 @@
 
   function updateTrackGains() {
     if (!state.audioContext) return;
-    const allTracks = [...state.tracks, ...state.arrangementTracks, ...state.melTracks, ...state.patterns];
+    const allTracks = [
+      ...state.tracks, ...state.arrangementTracks, ...state.melTracks, ...state.patterns,
+      ...state.effectTracks, state.masterTrack,
+    ].filter(Boolean);
     const hasSolo = [...state.tracks, ...state.arrangementTracks].some((track) => track.solo);
     const hasMelSolo = state.melTracks.some((track) => track.solo);
     allTracks.forEach((track) => {
       if (!track.gainNode) return;
-      const isSilent = track.muted || (track.kind === "pattern" ? false : track.kind === "mel"
+      const isBus = track.kind === "mixer-master" || track.kind === "mixer-effects";
+      const isSilent = track.muted || (!isBus && (track.kind === "pattern" ? false : track.kind === "mel"
         ? hasMelSolo && !track.solo
-        : hasSolo && !track.solo);
+        : hasSolo && !track.solo));
       track.gainNode.gain.setTargetAtTime(isSilent ? 0 : track.volume, state.audioContext.currentTime, 0.015);
     });
   }
@@ -6788,7 +6933,7 @@
     gain.gain.exponentialRampToValueAtTime(0.22, time + 0.002);
     gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.028);
     osc.connect(gain);
-    gain.connect(state.masterGain);
+    gain.connect(state.masterTrack.gainNode || state.masterGain);
     osc.start(time);
     osc.stop(time + 0.035);
   }
@@ -7238,6 +7383,21 @@
         effectChain: ensureTrackMixerState(track),
         clips: track.clips.map((clip) => ({ ...clip })),
       })),
+      masterTrack: {
+        volume: state.masterTrack.volume,
+        effects: makeDefaultEffects(state.masterTrack.effects),
+        effectSettings: makeDefaultEffectSettings(state.masterTrack.effectSettings),
+        effectChain: ensureTrackMixerState(state.masterTrack),
+      },
+      effectTracks: state.effectTracks.map((track) => ({
+        id: track.id,
+        name: track.name,
+        volume: track.volume,
+        routedTrackIds: [...track.routedTrackIds],
+        effects: makeDefaultEffects(track.effects),
+        effectSettings: makeDefaultEffectSettings(track.effectSettings),
+        effectChain: ensureTrackMixerState(track),
+      })),
       patternClips: state.patternClips.map((clip) => ({ ...clip, repeatCount: clip.repeatCount || 1 })),
       pianoNotes: (savedMel?.notes || state.pianoNotes).map((note) => ({ ...note })),
       pianoStartBar: state.pianoStartBar,
@@ -7435,6 +7595,19 @@
     try {
       const saved = JSON.parse(window.localStorage.getItem(getProjectStorageKey(state.projectId)) || "null");
       if (!saved || typeof saved !== "object") return;
+      if (saved.masterTrack && typeof saved.masterTrack === "object") {
+        state.masterTrack = makeMixerBusTrack("mixer-master", saved.masterTrack);
+      }
+      if (Array.isArray(saved.effectTracks)) {
+        const ids = new Set([MASTER_MIXER_TRACK_ID, ...state.tracks.map((track) => track.id)]);
+        state.effectTracks = saved.effectTracks
+          .filter((track) => {
+            if (typeof track?.id !== "string" || ids.has(track.id)) return false;
+            ids.add(track.id);
+            return true;
+          })
+          .map((track) => makeMixerBusTrack("mixer-effects", track));
+      }
       if (Number.isFinite(saved.bpm)) state.bpm = Math.max(60, Math.min(180, Math.round(saved.bpm)));
       if (Number.isFinite(saved.swing)) state.swing = Math.max(0, Math.min(45, Math.round(saved.swing)));
       if (Number.isFinite(saved.steps)) state.steps = normalizePatternSteps(saved.steps);
@@ -7709,6 +7882,21 @@
               }),
           }));
       }
+      const availableMixerTrackIds = new Set(getMixerSourceTracks().map(({ track }) => track.id));
+      const reservedTrackIds = new Set([MASTER_MIXER_TRACK_ID, ...availableMixerTrackIds]);
+      state.effectTracks = state.effectTracks.filter((track) => {
+        if (reservedTrackIds.has(track.id)) return false;
+        reservedTrackIds.add(track.id);
+        return true;
+      });
+      const routedMixerTrackIds = new Set();
+      state.effectTracks.forEach((track) => {
+        track.routedTrackIds = track.routedTrackIds.filter((trackId) => {
+          if (!availableMixerTrackIds.has(trackId) || routedMixerTrackIds.has(trackId)) return false;
+          routedMixerTrackIds.add(trackId);
+          return true;
+        });
+      });
       if (typeof saved.selectedMelId === "string") state.selectedMelId = saved.selectedMelId;
     } catch {
       try { window.localStorage.removeItem(getProjectStorageKey(state.projectId)); } catch { /* Storage may be disabled. */ }
@@ -7766,7 +7954,10 @@
     const previousContext = state.audioContext;
     const previousMaster = state.masterGain;
     const previousNoise = state.noiseBuffer;
-    const allTracks = [...state.tracks, ...state.arrangementTracks, ...state.melTracks, ...state.patterns];
+    const allTracks = [
+      ...state.tracks, ...state.arrangementTracks, ...state.melTracks, ...state.patterns,
+      ...state.effectTracks, state.masterTrack,
+    ];
     const previousGains = allTracks.map((track) => track.gainNode);
     const previousFxRuntimes = allTracks.map((track) => track.fxRuntime);
     const previousAnalysers = allTracks.map((track) => track.analyser);
@@ -7787,14 +7978,17 @@
       const hasMelSolo = state.melTracks.some((track) => track.solo);
       allTracks.forEach((track) => {
         track.gainNode = context.createGain();
-        const isSilent = track.muted || (track.kind === "pattern" ? false : track.kind === "mel"
+        const isBus = track.kind === "mixer-master" || track.kind === "mixer-effects";
+        const isSilent = track.muted || (!isBus && (track.kind === "pattern" ? false : track.kind === "mel"
           ? hasMelSolo && !track.solo
-          : hasSolo && !track.solo);
+          : hasSolo && !track.solo));
         track.gainNode.gain.value = isSilent ? 0 : track.volume;
         track.fxRuntime = null;
         track.analyser = null;
         track.sourceGains = null;
         track.effects = makeDefaultEffects(track.effects);
+      });
+      allTracks.forEach((track) => {
         rebuildTrackEffectChain(track);
       });
 
@@ -8053,6 +8247,7 @@
       setWorkspaceView("sequencer");
     });
     $("#mixer-tab").addEventListener("click", () => setWorkspaceView("mixer"));
+    $("#add-effects-track").addEventListener("click", createEffectTrack);
     $("#hide-workspace-button").addEventListener("click", () => setViewVisibility(true, false));
     $("#show-workspace-button").addEventListener("click", () => setViewVisibility(false, false));
     $("#hide-track-view-button").addEventListener("click", () => setViewVisibility(false, true));
@@ -8340,7 +8535,10 @@
       state.tracks.filter((track) => track.sample || track.kind === "sample").forEach((track) => {
         deletePersistedDrumSample(track.id).catch(() => showToast(`Could not remove saved sample ${track.name}.`));
       });
-      [...state.tracks, ...state.arrangementTracks, ...state.melTracks].forEach(disconnectTrackAudio);
+      [...state.tracks, ...state.arrangementTracks, ...state.melTracks, ...state.patterns,
+        ...state.effectTracks, state.masterTrack].forEach(disconnectTrackAudio);
+      state.masterTrack = makeMixerBusTrack("mixer-master");
+      state.effectTracks = [];
       state.tracks = makeTracks();
       state.steps = 16;
       state.patterns = [makePatternSnapshot(makeId(), "Pattern 1", PATTERN_COLORS[0])];
