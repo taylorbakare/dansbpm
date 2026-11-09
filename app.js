@@ -1935,7 +1935,6 @@
 
   function clearMarqueeSelectionOnOutsidePointer(event) {
     if (event.button !== 0 || event.shiftKey || event.altKey) return;
-    if (state.arrangementSelectionFromMarquee) arrangementMarqueeDeselectPending = true;
     const target = event.target;
     const pianoNote = target instanceof Element ? target.closest(".piano-roll-note") : null;
     const clickedSelectedPianoNote = pianoNote &&
@@ -1952,14 +1951,12 @@
       : null;
     const clickedSelectedArrangementItem = arrangementItem && state.selectedArrangementItems.has(
       arrangementSelectionKey(arrangementItem.dataset.selectableType, arrangementItem.dataset.clipId));
-    const clickedTrackViewSurface = target instanceof Element &&
-      target.closest("#timeline-scroll, #arrangement-track-labels");
-    if (state.selectedArrangementItems.size && clickedTrackViewSurface && !clickedSelectedArrangementItem) {
-      state.selectedArrangementItems.clear();
-      state.arrangementSelectionFromMarquee = false;
-      updateArrangementSelection();
+    const clickedControl = target instanceof Element &&
+      target.closest("button, input, select, textarea, [role='button'], [role='slider']");
+    if (state.arrangementSelectionFromMarquee && !clickedSelectedArrangementItem && !clickedControl) {
+      arrangementMarqueeDeselectPending = true;
     }
-    if (state.arrangementSelectionFromMarquee && !clickedSelectedArrangementItem) {
+    if (state.selectedArrangementItems.size && !clickedSelectedArrangementItem && !clickedControl) {
       state.selectedArrangementItems.clear();
       state.arrangementSelectionFromMarquee = false;
       updateArrangementSelection();
