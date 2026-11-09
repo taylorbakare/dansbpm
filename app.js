@@ -3392,6 +3392,7 @@
       B: { sourceKey: "", volume: 0.8, filter: 20000, playing: false, timerId: null, audioSource: null, filterNode: null, gainNode: null, nextStepTime: 0, stepIndex: 0 },
     },
   };
+  let djVisualTimer = null;
 
   function getDjStorageKey() {
     return `${getProjectStorageKey(state.projectId)}:dj`;
@@ -3551,6 +3552,242 @@
       padGrid.append(pad);
     });
     applyDjMixer();
+    renderDjLiveView();
+  }
+
+  function getDjTimelineData(deckId) {
+    const source = getDjSource(djState.decks[deckId].sourceKey);
+    if (!source) return null;
+    if (source.type === "pattern") {
+      const pattern = source.item;
+      const stepCount = getGridStepCount(pattern);
+      const ticksPerStep = getGridTicksPerStep(pattern);
+      const lanes = getPatternTrackIds(pattern).map((trackId) => {
+        const track = state.tracks.find((item) => item.id === trackId);
+        return {
+          name: track?.name || "Track",
+          color: track?.color || "#d3f36b",
+          cells: pattern.cells?.[trackId] || [],
+          stepCount,
+          ticksPerStep,
+          notes: pattern.stepPianoNotes?.[trackId] || [],
+        };
+      });
+      return { source, kind: "ticks", loopTicks: Math.max(1, (pattern.steps || 16) * 2), lanes };
+    }
+    if (source.type === "mel") {
+      return {
+        source,
+        kind: "ticks",
+        loopTicks: Math.max(1, Math.round(getMelLengthBars(source.item) * PIANO_TICKS_PER_BAR)),
+        lanes: [{ name: source.item.name, color: "#9bc6ff", notes: source.item.notes || [] }],
+      };
+    }
+    const clip = source.item.clips.find((item) => item.buffer);
+    const offset = Math.max(0, clip?.sourceOffsetSeconds || 0);
+    const duration = clip ? Math.max(0, Math.min(clip.buffer.duration - offset,
+      clip.durationSeconds ?? clip.buffer.duration)) : 0;
+    return {
+      source,
+      kind: "audio",
+      clip,
+      offset,
+      loopSeconds: duration,
+      lanes: [{ name: clip?.name || source.item.name, color: "#9bc6ff" }],
+    };
+  }
+
+  function renderDjLiveView() {
+    const container = $("#dj-live-deck-view");
+    container.replaceChildren();
+    DJ_DECK_IDS.forEach((deckId) => {
+      const data = getDjTimelineData(deckId);
+      const row = document.createElement("section");
+      row.className = "dj-live-deck-row";
+      const heading = document.createElement("div");
+      heading.className = "dj-live-deck-row-heading";
+      const label = document.createElement("strong");
+      label.textContent = `DECK ${deckId}`;
+      const title = document.createElement("span");
+      title.textContent = data ? `${data.source.name} · ${data.kind === "audio" ? "AUDIO" : data.kind === "ticks" && data.source.type === "mel" ? "MEL" : "PATTERN"}` : "No live source selected";
+      heading.append(label, title);
+      row.append(heading);
+      if (!data) {
+        const empty = document.createElement("div");
+        empty.className = "dj-live-empty";
+        empty.textContent = "Choose a pattern, Mel, or audio track on this deck to see its live lanes.";
+        row.append(empty);
+      } else {
+        const canvas = document.createElement("canvas");
+        canvas.className = "dj-live-timeline";
+        canvas.dataset.deck = deckId;
+        canvas.setAttribute("role", "img");
+        canvas.setAttribute("aria-label", `Scrolling live timeline for Deck ${deckId}, ${data.source.name}, ${data.lanes.length} track lanes`);
+        canvas.style.height = `${Math.max(58, data.lanes.length * 34 + 24)}px`;
+        row.append(canvas);
+        if (data.kind === "audio" && !data.clip) {
+          const loading = document.createElement("div");
+          loading.className = "dj-live-empty";
+          loading.textContent = "Waiting for an available audio clip.";
+          row.append(loading);
+        }
+      }
+      container.append(row);
+    });
+    drawDjLiveView();
+  }
+
+  function drawDjLiveView() {
+    document.querySelectorAll(".dj-live-timeline").forEach((canvas) => {
+      const deckId = canvas.dataset.deck;
+      const data = getDjTimelineData(deckId);
+      if (!data) return;
+      const bounds = canvas.getBoundingClientRect();
+      const width = Math.max(1, bounds.width);
+      const height = Math.max(1, bounds.height);
+      const pixelRatio = Math.min(2, window.devicePixelRatio || 1);
+      const pixelWidth = Math.round(width * pixelRatio);
+      const pixelHeight = Math.round(height * pixelRatio);
+      if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+        canvas.width = pixelWidth;
+        canvas.height = pixelHeight;
+      }
+      const context = canvas.getContext("2d");
+      if (!context) return;
+      context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+      context.fillStyle = "#17181b";
+      context.fillRect(0, 0, width, height);
+
+      const deck = djState.decks[deckId];
+      const now = state.audioContext?.currentTime || 0;
+      const labelWidth = Math.min(132, Math.max(78, width * 0.23));
+      const timelineWidth = Math.max(1, width - labelWidth);
+      const rowHeight = 34;
+      let position;
+      let visibleSpan;
+      let start;
+      if (data.kind === "ticks") {
+        const tickRate = state.bpm / 60 * 8;
+        position = (deck.visualStartTick || 0) +
+          (deck.playing ? Math.max(0, now - (deck.visualStartTime || now)) * tickRate : 0);
+        visibleSpan = data.loopTicks * 2;
+        start = Math.max(0, position - visibleSpan * 0.75);
+      } else {
+        const playbackRate = deck.audioSource?.playbackRate.value || 1;
+        position = deck.playing ? Math.max(0, now - (deck.visualStartTime || now)) * playbackRate : 0;
+        visibleSpan = Math.max(1, data.loopSeconds * 2);
+        start = Math.max(0, position - visibleSpan * 0.75);
+      }
+
+      data.lanes.forEach((lane, index) => {
+        const top = index * rowHeight;
+        context.fillStyle = index % 2 ? "#1b1c20" : "#1e1f23";
+        context.fillRect(0, top, width, rowHeight);
+        context.fillStyle = "#aeb0b6";
+        context.font = "9px sans-serif";
+        context.textBaseline = "middle";
+        context.save();
+        context.beginPath();
+        context.rect(6, top, labelWidth - 12, rowHeight);
+        context.clip();
+        context.fillText(lane.name, 9, top + rowHeight / 2);
+        context.restore();
+
+        const toX = (value) => labelWidth + (value - start) / visibleSpan * timelineWidth;
+        if (data.kind === "ticks") {
+          const firstBar = Math.floor(start / PIANO_TICKS_PER_BAR);
+          const lastBar = Math.ceil((start + visibleSpan) / PIANO_TICKS_PER_BAR);
+          for (let bar = firstBar; bar <= lastBar; bar += 1) {
+            const x = toX(bar * PIANO_TICKS_PER_BAR);
+            context.strokeStyle = bar % 4 === 0 ? "#45474d" : "#303137";
+            context.beginPath();
+            context.moveTo(x, top);
+            context.lineTo(x, top + rowHeight);
+            context.stroke();
+            if (index === 0) {
+              context.fillStyle = "#74767d";
+              context.font = "8px monospace";
+              context.fillText(String(bar + 1), x + 3, 8);
+            }
+          }
+          const loop = data.loopTicks;
+          const firstLoop = Math.floor(start / loop);
+          const lastLoop = Math.ceil((start + visibleSpan) / loop);
+          const events = [];
+          if (Array.isArray(lane.cells)) {
+            for (let step = 0; step < Math.min(lane.stepCount || lane.cells.length, lane.cells.length); step += 1) {
+              if (lane.cells[step]) events.push({ tick: step * lane.ticksPerStep, duration: Math.max(1, lane.ticksPerStep), color: lane.color });
+            }
+          }
+          (lane.notes || []).forEach((note) => events.push({
+            tick: note.startTick,
+            duration: note.durationTicks || 1,
+            color: lane.color,
+          }));
+          events.forEach((event) => {
+            for (let loopIndex = firstLoop; loopIndex <= lastLoop; loopIndex += 1) {
+              const absoluteTick = loopIndex * loop + event.tick;
+              if (absoluteTick + event.duration < start || absoluteTick > start + visibleSpan) continue;
+              const x = toX(absoluteTick);
+              const eventWidth = Math.max(3, event.duration / visibleSpan * timelineWidth);
+              context.globalAlpha = 0.86;
+              context.fillStyle = event.color;
+              context.fillRect(x, top + 11, Math.min(eventWidth, timelineWidth), 12);
+              context.globalAlpha = 1;
+            }
+          });
+        } else if (data.clip && data.loopSeconds > 0) {
+          const clip = data.clip;
+          const samples = clip.buffer.getChannelData(0);
+          const firstSample = Math.floor(data.offset / clip.buffer.duration * samples.length);
+          const sampleCount = Math.max(1, Math.floor(data.loopSeconds / clip.buffer.duration * samples.length));
+          const binCount = Math.max(24, Math.min(128, Math.floor(timelineWidth / 3)));
+          const firstLoop = Math.floor(start / data.loopSeconds);
+          const lastLoop = Math.ceil((start + visibleSpan) / data.loopSeconds);
+          context.strokeStyle = lane.color;
+          context.lineWidth = 1;
+          for (let loopIndex = firstLoop; loopIndex <= lastLoop; loopIndex += 1) {
+            const loopStart = loopIndex * data.loopSeconds;
+            for (let bin = 0; bin < binCount; bin += 1) {
+              const absoluteTime = loopStart + bin / binCount * data.loopSeconds;
+              if (absoluteTime < start || absoluteTime > start + visibleSpan) continue;
+              const sampleStart = firstSample + Math.floor(bin / binCount * sampleCount);
+              const sampleEnd = Math.min(samples.length, firstSample + Math.floor((bin + 1) / binCount * sampleCount));
+              const sampleStride = Math.max(1, Math.floor((sampleEnd - sampleStart) / 24));
+              let peak = 0;
+              for (let sample = sampleStart; sample < Math.max(sampleStart + 1, sampleEnd); sample += sampleStride) {
+                peak = Math.max(peak, Math.abs(samples[Math.min(sample, samples.length - 1)]));
+              }
+              const x = toX(absoluteTime);
+              const amplitude = Math.max(2, peak * (rowHeight - 12) / 2);
+              context.beginPath();
+              context.moveTo(x, top + rowHeight / 2 - amplitude);
+              context.lineTo(x, top + rowHeight / 2 + amplitude);
+              context.stroke();
+            }
+          }
+        }
+      });
+
+      const playheadX = labelWidth + Math.max(0, Math.min(1, (position - start) / visibleSpan)) * timelineWidth;
+      context.strokeStyle = "#f3f5e8";
+      context.lineWidth = 1.5;
+      context.beginPath();
+      context.moveTo(playheadX, 0);
+      context.lineTo(playheadX, Math.min(height, data.lanes.length * rowHeight));
+      context.stroke();
+    });
+  }
+
+  function refreshDjVisualTimer() {
+    const isPlaying = state.view === "dj" && DJ_DECK_IDS.some((deckId) => djState.decks[deckId].playing);
+    if (isPlaying && djVisualTimer === null) {
+      djVisualTimer = window.setInterval(drawDjLiveView, 33);
+    } else if (!isPlaying && djVisualTimer !== null) {
+      window.clearInterval(djVisualTimer);
+      djVisualTimer = null;
+      drawDjLiveView();
+    }
   }
 
   function updateDjDeckUI(deckId) {
@@ -3608,6 +3845,7 @@
     deck.audioSource = null;
     deck.playing = false;
     updateDjDeckUI(deckId);
+    refreshDjVisualTimer();
   }
 
   async function startDjDeck(deckId) {
@@ -3651,9 +3889,13 @@
         };
         player.start(startTime, offset);
         deck.audioSource = player;
+        deck.visualStartTime = startTime;
+        deck.visualStartSeconds = 0;
       } else {
         deck.stepIndex = Number.isFinite(deck.pendingStepIndex) ? deck.pendingStepIndex : 0;
         deck.pendingStepIndex = undefined;
+        deck.visualStartTime = startTime;
+        deck.visualStartTick = deck.stepIndex;
         deck.timerId = window.setInterval(() => {
           try {
             scheduleDjDeck(deckId);
@@ -3665,6 +3907,7 @@
         scheduleDjDeck(deckId);
       }
       updateDjDeckUI(deckId);
+      refreshDjVisualTimer();
     } catch (error) {
       stopDjDeck(deckId);
       showToast(error.message || "DJ deck audio could not start.");
@@ -3752,6 +3995,8 @@
       } else {
         deck.nextStepTime = startTime;
         deck.stepIndex = deck.pendingStepIndex;
+        deck.visualStartTime = startTime;
+        deck.visualStartTick = deck.stepIndex;
       }
     }
     showToast(`Deck ${deckId} synced${other.playing ? ` to Deck ${deckId === "A" ? "B" : "A"}` : " to the next beat"}.`);
@@ -3770,6 +4015,11 @@
       }, 250);
     } else if (deck.timerId !== null) {
       deck.nextStepTime -= direction * getSchedulerTickDuration();
+      const now = state.audioContext.currentTime;
+      const currentTick = (deck.visualStartTick || 0) +
+        Math.max(0, now - (deck.visualStartTime || now)) * state.bpm / 60 * 8;
+      deck.visualStartTick = Math.max(0, currentTick + direction);
+      deck.visualStartTime = now;
     }
   }
 
@@ -3868,6 +4118,7 @@
         djState.decks[deckId].pendingStepIndex = 0;
         djState.decks[deckId].syncedStartTime = 0;
         setActiveDjDeck(deckId);
+        renderDjLiveView();
       });
       $(`#dj-play-${suffix}`).addEventListener("click", () => {
         setActiveDjDeck(deckId);
@@ -7352,6 +7603,7 @@
     $("#mixer-view").hidden = !showMixer;
     $("#dj-view").hidden = !showDJ;
     if (showDJ) renderDjView();
+    refreshDjVisualTimer();
     $("#sequencer-tab").classList.toggle("is-selected", showSequencer);
     $("#sequencer-tab").setAttribute("aria-selected", String(showSequencer));
     $("#arrangement-tab").classList.toggle("is-selected", view === "arrangement");
