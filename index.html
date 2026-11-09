@@ -441,13 +441,13 @@
                         <div class="dj-section-heading">
                           <div>
                             <h2 id="dj-arrangement-title">Arrangement</h2>
-                            <p>Drag either waveform to stage its entry; scroll with VIEW. The playhead follows playback.</p>
+                            <p>Drag either waveform to stage its entry; drag the ruler to seek. Space pauses and resumes.</p>
                           </div>
                         </div>
                         <div class="dj-live-deck-view" id="dj-live-deck-view">
                           <div class="dj-live-ruler" aria-label="Arrangement time ruler">
                             <span>TIME<small>BAR</small></span>
-                            <canvas id="dj-arrangement-ruler" aria-hidden="true"></canvas>
+                            <canvas id="dj-arrangement-ruler" role="slider" tabindex="0" aria-label="Arrangement playhead" aria-valuemin="0" aria-valuemax="256" aria-valuenow="0" aria-valuetext="Bar 1"></canvas>
                           </div>
                           <label class="dj-arrangement-scroll" for="dj-arrangement-scroll">
                             <span>VIEW</span>
