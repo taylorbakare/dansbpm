@@ -303,6 +303,7 @@
   const PIANO_ROW_HEIGHT = 18;
   const PIANO_TOP_MIDI = 83;
   const PIANO_BOTTOM_MIDI = 35;
+  let pianoNoteContextTargetIds = [];
   const state = {
     tracks: [],
     patterns: [],
@@ -570,7 +571,7 @@
 
   function stepPianoNoteSignature(notes) {
     return JSON.stringify(notes
-      .map((note) => [note.startTick, note.durationTicks, note.midi, note.velocity])
+      .map((note) => [note.startTick, note.durationTicks, note.midi, note.velocity, note.volume, note.attack, note.detune])
       .sort((left, right) => left[0] - right[0] || left[2] - right[2] || left[1] - right[1]));
   }
 
@@ -613,6 +614,9 @@
       durationTicks: note.durationTicks,
       midi: note.midi,
       velocity: note.velocity,
+      volume: note.volume,
+      attack: note.attack,
+      detune: note.detune,
     }));
     const cells = Array(STEP_COUNT).fill(false);
     const ticksPerStep = getGridTicksPerStep(pattern);
@@ -1329,6 +1333,85 @@
       updatePianoPlayhead();
   }
 
+  function getPianoNoteContextValue(note, property) {
+    if (property === "volume") return note.volume ?? 1;
+    if (property === "velocity") return note.velocity ?? 0.8;
+    if (property === "attack") {
+      const track = getPianoTrack(note.trackId);
+      const defaultAttack = track?.kind === "instrument" ? Number(track.patch?.attack) || 0.005 : 0;
+      return (note.attack ?? defaultAttack) * 1000;
+    }
+    return note.detune ?? 0;
+  }
+
+  function updatePianoNoteContextOutput(property, value) {
+    const output = $(`#piano-note-${property}-value`);
+    output.textContent = property === "attack" ? `${Math.round(value)} ms`
+      : property === "detune" ? `${Math.round(value)} cents`
+        : `${Math.round(value)}%`;
+  }
+
+  function openPianoNoteContextMenu(event, note) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!state.selectedPianoNoteIds.has(note.id)) selectPianoNote(note.id);
+    state.selectedPianoNoteId = note.id;
+    pianoNoteContextTargetIds = state.pianoNotes
+      .filter((item) => state.selectedPianoNoteIds.has(item.id))
+      .map((item) => item.id);
+    const menu = $("#piano-note-context-menu");
+    ["volume", "attack", "velocity", "detune"].forEach((property) => {
+      const input = $(`#piano-note-${property}`);
+      const value = getPianoNoteContextValue(note, property);
+      input.value = String(property === "volume" || property === "velocity" ? value * 100 : value);
+      updatePianoNoteContextOutput(property, Number(input.value));
+    });
+    menu.hidden = false;
+    menu.style.left = `${Math.max(8, Math.min(event.clientX, window.innerWidth - menu.offsetWidth - 8))}px`;
+    menu.style.top = `${Math.max(8, Math.min(event.clientY, window.innerHeight - menu.offsetHeight - 8))}px`;
+  }
+
+  function closePianoNoteContextMenu() {
+    $("#piano-note-context-menu").hidden = true;
+    pianoNoteContextTargetIds = [];
+  }
+
+  function updatePianoNoteContext(event) {
+    const input = event.target.closest("input[data-note-property]");
+    if (!input) return;
+    const property = input.dataset.noteProperty;
+    const sliderValue = Number(input.value);
+    const value = property === "volume" || property === "velocity" ? sliderValue / 100 : sliderValue;
+    const noteValue = property === "attack" ? value / 1000 : value;
+    const targets = new Set(pianoNoteContextTargetIds);
+    state.pianoNotes.forEach((note) => {
+      if (targets.has(note.id)) note[property] = noteValue;
+    });
+    updatePianoNoteContextOutput(property, sliderValue);
+    saveState();
+  }
+
+  function humanizePianoNotes() {
+    const selectedIds = new Set(state.selectedPianoNoteIds);
+    if (state.selectedPianoNoteId) selectedIds.add(state.selectedPianoNoteId);
+    const notes = state.pianoNotes.filter((note) => !selectedIds.size || selectedIds.has(note.id));
+    if (!notes.length) {
+      showToast("Add notes to the Piano Roll before humanizing.");
+      return;
+    }
+    const totalTicks = state.pianoBars * PIANO_TICKS_PER_BAR;
+    notes.forEach((note) => {
+      const timingOffset = Math.round((Math.random() * 2 - 1) * 2);
+      note.startTick = Math.max(0, Math.min(totalTicks - note.durationTicks, note.startTick + timingOffset));
+      note.velocity = Math.max(0, Math.min(1, (note.velocity ?? 0.8) + (Math.random() * 2 - 1) * 0.1));
+    });
+    closePianoNoteContextMenu();
+    renderPianoRoll();
+    updateArrangementLength();
+    renderArrangement();
+    saveState();
+  }
+
   function makePianoNoteFromPointer(event) {
     const track = getPianoTrack();
     if (!track) return null;
@@ -1442,7 +1525,8 @@
     updateArrangementLength();
     renderArrangement();
     saveState();
-    ensureAudio().then(() => playPianoNote(getPianoTrack(note.trackId), state.audioContext.currentTime + 0.015, note.midi, note.durationTicks / PIANO_TICKS_PER_BAR * (240 / state.bpm), note.velocity))
+    ensureAudio().then(() => playPianoNote(getPianoTrack(note.trackId), state.audioContext.currentTime + 0.015,
+      note.midi, note.durationTicks / PIANO_TICKS_PER_BAR * (240 / state.bpm), note.velocity, getPianoTrack(note.trackId), null, note))
       .catch((error) => showToast(error.message || "The instrument could not be played."));
   }
 
@@ -2673,7 +2757,7 @@
         const outputNode = destination !== track ? getPatternSourceGain(destination, track) : null;
         const noteTime = time + (Math.floor(tick / 2) % 2 === 1 ? getStepDuration() * (state.swing / 100) : 0);
         playPianoNote(track, noteTime, note.midi,
-          note.durationTicks * getSchedulerTickDuration(), note.velocity || 0.8, destination, outputNode);
+          note.durationTicks * getSchedulerTickDuration(), note.velocity ?? 0.8, destination, outputNode, note);
       });
     });
   }
@@ -2806,8 +2890,8 @@
             const clipEnd = (sourceOffset + getArrangementClipDuration("pattern", clip) - sourcePosition) * secondsPerBar;
             const noteDuration = Math.min(note.durationTicks * getSchedulerTickDuration(), clipEnd);
             if (noteDuration > 0) {
-              playPianoNote(track, when, note.midi, noteDuration, note.velocity || 0.8,
-                patternTrack, getPatternSourceGain(patternTrack, track));
+              playPianoNote(track, when, note.midi, noteDuration, note.velocity ?? 0.8,
+                patternTrack, getPatternSourceGain(patternTrack, track), note);
             }
             state.scheduledArrangementSteps.add(key);
           });
@@ -2832,7 +2916,7 @@
         if (state.scheduledPianoNotes.has(key)) continue;
         const when = state.playbackStartTime + loop * loopSeconds + noteOffset;
         if (when < now || when >= now + lookAhead) continue;
-        playPianoNote(instrument, when, note.midi, duration, note.velocity || 0.8);
+        playPianoNote(instrument, when, note.midi, duration, note.velocity ?? 0.8, instrument, null, note);
         state.scheduledPianoNotes.add(key);
       }
     });
@@ -2968,7 +3052,8 @@
         const key = `${note.id}:${loop}`;
         const when = player.startTime + loop * loopSeconds + note.startTick / PIANO_TICKS_PER_BAR * secondsPerBar;
         if (player.scheduledMelNotes.has(key) || when < now || when >= now + lookAhead) continue;
-        playPianoNote(instrument, when, note.midi, note.durationTicks / PIANO_TICKS_PER_BAR * secondsPerBar, note.velocity || 0.8);
+        playPianoNote(instrument, when, note.midi, note.durationTicks / PIANO_TICKS_PER_BAR * secondsPerBar,
+          note.velocity ?? 0.8, instrument, null, note);
         player.scheduledMelNotes.add(key);
       }
     });
@@ -6037,8 +6122,9 @@
     }
   }
 
-  function playPianoNote(track, time, midi, duration, velocity = 0.8, outputTrack = track, outputNode = null) {
+  function playPianoNote(track, time, midi, duration, velocity = 0.8, outputTrack = track, outputNode = null, noteOptions = {}) {
     if (!track) return;
+    velocity *= Math.max(0, Math.min(1, noteOptions.volume ?? 1));
     ensureSequencerTrackAudio(track);
     ensureTrackAudio(outputTrack);
     outputNode ||= outputTrack.gainNode;
@@ -6046,14 +6132,17 @@
       const context = state.audioContext;
       const source = context.createBufferSource();
       const envelope = context.createGain();
-      const rate = Math.pow(2, (midi - 60) / 12);
+      const detune = Number.isFinite(noteOptions.detune) ? noteOptions.detune : 0;
+      const rate = Math.pow(2, (midi - 60 + detune / 100) / 12);
       source.buffer = track.sample.buffer;
       source.playbackRate.setValueAtTime(rate, time);
       const bufferDuration = Math.min(source.buffer.duration, Math.max(0.01, duration) * rate);
       const outputDuration = bufferDuration / rate;
       const fade = Math.min(0.02, outputDuration * 0.12);
-      envelope.gain.setValueAtTime(velocity, time);
-      envelope.gain.setValueAtTime(velocity, time + Math.max(0, outputDuration - fade));
+      const attack = Math.min(Math.max(0, Number.isFinite(noteOptions.attack) ? noteOptions.attack : 0), outputDuration * 0.7);
+      envelope.gain.setValueAtTime(0.0001, time);
+      envelope.gain.linearRampToValueAtTime(velocity, time + attack);
+      envelope.gain.setValueAtTime(velocity, time + Math.max(attack, outputDuration - fade));
       envelope.gain.linearRampToValueAtTime(0.0001, time + outputDuration);
       source.connect(envelope);
       envelope.connect(outputNode);
@@ -6061,21 +6150,22 @@
       return;
     }
     if (track.kind === "instrument") {
-      playInstrumentVoice(track, time, midi, duration, velocity, outputTrack, outputNode);
+      playInstrumentVoice(track, time, midi, duration, velocity, outputTrack, outputNode, noteOptions);
       return;
     }
     if (track.kind === "drumkit") {
-      playDrumKitNote(track, time, midi, duration, velocity, outputTrack, outputNode);
+      playDrumKitNote(track, time, midi, duration, velocity, outputTrack, outputNode, noteOptions.attack);
       return;
     }
     triggerTrack(track, time, 0, track.variant, duration, outputTrack, outputNode, midi - getDefaultStepMidi(track));
   }
 
-  function playInstrumentVoice(track, time, midi, duration, velocity, outputTrack = track, outputNode = outputTrack.gainNode) {
+  function playInstrumentVoice(track, time, midi, duration, velocity, outputTrack = track, outputNode = outputTrack.gainNode, noteOptions = {}) {
     const context = state.audioContext;
     const patch = track.patch || {};
     const frequency = 440 * Math.pow(2, (midi - 69) / 12);
-    const attack = Math.min(Number(patch.attack) || 0.005, Math.max(0.002, duration * 0.7));
+    const noteAttack = Number.isFinite(noteOptions.attack) ? noteOptions.attack : Number(patch.attack) || 0.005;
+    const attack = Math.min(Math.max(0, noteAttack), Math.max(0.002, duration * 0.7));
     const decay = Math.min(Number(patch.decay) || 0.1, Math.max(0.005, duration - attack));
     const release = Math.max(0.04, Number(patch.release) || 0.1);
     const sustain = Math.max(0.04, Math.min(0.9, Number(patch.sustain) || 0.3));
@@ -6089,7 +6179,7 @@
     filter.Q.value = 0.7;
     oscillator.type = patch.wave || "triangle";
     oscillator.frequency.setValueAtTime(frequency, time);
-    oscillator.detune.setValueAtTime(Number(patch.detune) || 0, time);
+    oscillator.detune.setValueAtTime((Number(patch.detune) || 0) + (Number(noteOptions.detune) || 0), time);
     envelope.gain.setValueAtTime(0.0001, time);
     envelope.gain.linearRampToValueAtTime(peak, time + attack);
     envelope.gain.linearRampToValueAtTime(peak * sustain, time + attack + decay);
@@ -6105,7 +6195,7 @@
       const overtoneGain = context.createGain();
       overtone.type = patch.wave || "sine";
       overtone.frequency.setValueAtTime(frequency * patch.harmonic, time);
-      overtone.detune.setValueAtTime(Number(patch.detune) || 0, time);
+      overtone.detune.setValueAtTime((Number(patch.detune) || 0) + (Number(noteOptions.detune) || 0), time);
       overtoneGain.gain.setValueAtTime(Math.max(0, Math.min(0.6, Number(patch.harmonicLevel) || 0.15)), time);
       overtone.connect(overtoneGain);
       overtoneGain.connect(filter);
@@ -6114,13 +6204,14 @@
     }
   }
 
-  function playDrumKitNote(track, time, midi, duration, velocity, outputTrack = track, outputNode = outputTrack.gainNode) {
+  function playDrumKitNote(track, time, midi, duration, velocity, outputTrack = track, outputNode = outputTrack.gainNode, attack = 0) {
     const kit = track.patch?.kit || "909";
     const sounds = DRUM_KIT_PROFILES[kit] || DRUM_KIT_PROFILES["909"];
     const scale = Math.max(0.25, Math.min(4, duration / getStepDuration()));
     const context = state.audioContext;
     const noteGain = state.audioContext.createGain();
-    noteGain.gain.setValueAtTime(velocity, time);
+    noteGain.gain.setValueAtTime(0.0001, time);
+    noteGain.gain.linearRampToValueAtTime(velocity, time + Math.max(0, Number.isFinite(attack) ? attack : 0));
     noteGain.connect(outputNode);
     if (midi === 35 || midi === 36) playKick(context, noteGain, time, midi, sounds.kick, scale);
     else if (midi === 37) playRim(context, noteGain, time, sounds.rim, scale * 0.7);
@@ -6421,7 +6512,7 @@
           const when = startTime + (audibleStartBar - startBar) * secondsPerBar;
           const duration = Math.max(0, noteEndBar - audibleStartBar) * secondsPerBar;
           if (duration > 0) {
-            playPianoNote(instrument, when, note.midi, duration, note.velocity || 0.8, melTrack);
+            playPianoNote(instrument, when, note.midi, duration, note.velocity ?? 0.8, melTrack, null, note);
             state.scheduledPianoNotes.add(key);
           }
         });
@@ -7395,8 +7486,8 @@
               const clipEndDuration = (sourceOffset + clipDuration - sourcePosition) * secondsPerBar;
               const noteDuration = Math.min(note.durationTicks * getSchedulerTickDuration(), clipEndDuration, duration - startTime);
               if (noteDuration > 0) {
-                playPianoNote(track, startTime, note.midi, noteDuration, note.velocity || 0.8,
-                  patternTrack, getPatternSourceGain(patternTrack, track));
+                playPianoNote(track, startTime, note.midi, noteDuration, note.velocity ?? 0.8,
+                  patternTrack, getPatternSourceGain(patternTrack, track), note);
               }
             });
           }
@@ -7419,7 +7510,8 @@
             if (startBar >= duration / secondsPerBar || endBar <= startBar) return;
             const startTime = startBar * secondsPerBar;
             const noteDuration = Math.min((endBar - startBar) * secondsPerBar, duration - startTime);
-            if (noteDuration > 0) playPianoNote(instrument, startTime, note.midi, noteDuration, note.velocity || 0.8, melTrack);
+            if (noteDuration > 0) playPianoNote(instrument, startTime, note.midi, noteDuration,
+              note.velocity ?? 0.8, melTrack, null, note);
           });
         });
       });
@@ -7650,6 +7742,24 @@
     $("#piano-draw-mode-button").addEventListener("click", () => {
       state.pianoDrawMode = !state.pianoDrawMode;
       renderPianoRoll();
+    });
+    $("#piano-humanize-button").addEventListener("click", humanizePianoNotes);
+    $("#piano-roll-grid").addEventListener("contextmenu", (event) => {
+      const noteElement = event.target.closest(".piano-roll-note");
+      if (!noteElement) return;
+      const note = state.pianoNotes.find((item) => item.id === noteElement.dataset.noteId);
+      if (note) openPianoNoteContextMenu(event, note);
+    });
+    $("#piano-note-context-menu").addEventListener("input", updatePianoNoteContext);
+    $("#piano-note-context-close").addEventListener("click", closePianoNoteContextMenu);
+    document.addEventListener("pointerdown", (event) => {
+      const menu = $("#piano-note-context-menu");
+      if (!menu.hidden && !menu.contains(event.target)) closePianoNoteContextMenu();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !$("#piano-note-context-menu").hidden) {
+        closePianoNoteContextMenu();
+      }
     });
     $("#piano-snap-select").addEventListener("change", (event) => {
       state.pianoSnap = Number(event.target.value);

@@ -400,6 +400,14 @@ kbd { border: 1px solid #393a3f; border-radius: 3px; padding: 2px 4px; color: #b
 .piano-roll-note:active { cursor: grabbing; }
 .piano-roll-grid.is-draw-mode .piano-roll-note { cursor: crosshair; }
 .piano-roll-note-resize { position: absolute; top: 0; right: 0; bottom: 0; width: 8px; border-right: 2px solid #fff9; cursor: ew-resize; }
+.piano-note-context-menu { position: fixed; z-index: 30; width: 220px; display: flex; flex-direction: column; gap: 10px; border: 1px solid #424349; border-radius: 6px; background: #232428; box-shadow: 0 8px 24px #0009; padding: 10px; }
+.piano-note-context-menu[hidden] { display: none; }
+.piano-note-context-heading { display: flex; align-items: center; justify-content: space-between; color: var(--accent); font-family: var(--mono); font-size: 9px; letter-spacing: .5px; }
+.piano-note-context-heading .quiet-button { width: 24px; height: 24px; padding: 0; font-size: 14px; }
+.piano-note-context-control { display: flex; flex-direction: column; gap: 5px; color: #c6c7cb; font-size: 10px; }
+.piano-note-context-control > span { display: flex; justify-content: space-between; }
+.piano-note-context-control output { color: #92949a; font-family: var(--mono); }
+.piano-note-context-control input { width: 100%; margin: 0; accent-color: var(--accent); }
 .piano-roll-footer { flex: 0 0 auto; color: #77787e; font-family: var(--mono); font-size: 8px; }
 
 @media (max-width: 760px) {
