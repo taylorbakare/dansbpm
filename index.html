@@ -169,7 +169,7 @@
                           </div>
                           <label class="scale-control">
                             <span>SCALE</span>
-                            <input id="sequencer-scale-slider" type="range" min="50" max="200" step="10" value="100" aria-label="Step grid scale">
+                            <input id="sequencer-scale-slider" type="range" min="50" max="400" step="10" value="100" aria-label="Step grid scale">
                             <output id="sequencer-scale-value" for="sequencer-scale-slider">100%</output>
                           </label>
                           <button class="quiet-button keyboard-record-button" id="step-keyboard-record-button" type="button" aria-pressed="false">Record keys</button>
@@ -226,6 +226,7 @@
                         <label class="pattern-select-control">
                           <span>SNAP</span>
                           <select id="piano-snap-select" aria-label="Piano roll grid snap">
+                            <option value="off">Off</option>
                             <option value="1">1/32</option>
                             <option value="2" selected>1/16</option>
                             <option value="4">1/8</option>
@@ -252,7 +253,7 @@
                         </label>
                         <label class="scale-control">
                           <span>SCALE</span>
-                          <input id="piano-scale-slider" type="range" min="50" max="200" step="10" value="100" aria-label="Piano roll scale">
+                          <input id="piano-scale-slider" type="range" min="50" max="400" step="10" value="100" aria-label="Piano roll scale">
                           <output id="piano-scale-value" for="piano-scale-slider">100%</output>
                         </label>
                         <button class="quiet-button" id="clear-piano-roll-button" type="button">Clear notes</button>
@@ -311,7 +312,7 @@
                       <button class="quiet-button" id="arrangement-snap-button" type="button" aria-pressed="true" title="Snap the playhead and clips to quarter-note beats">SNAP ON</button>
                       <label class="scale-control">
                         <span>SCALE</span>
-                        <input id="arrangement-scale-slider" type="range" min="50" max="200" step="10" value="100" aria-label="Track view scale">
+                        <input id="arrangement-scale-slider" type="range" min="50" max="400" step="10" value="100" aria-label="Track view scale">
                         <output id="arrangement-scale-value" for="arrangement-scale-slider">100%</output>
                       </label>
                       <span class="arrangement-bar-label" id="arrangement-bar-label">32 BARS</span>

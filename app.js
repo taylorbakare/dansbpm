@@ -406,6 +406,7 @@
     pianoDrawMode: false,
     stepPianoEditContext: null,
     pianoSnap: 2,
+    pianoSnapEnabled: true,
     pianoNoteLength: 2,
     selectedPianoTrackId: "piano-grand",
     selectedPianoNoteId: null,
@@ -610,6 +611,14 @@
 
   function getPianoTickWidth() {
     return PIANO_TICK_WIDTH * state.pianoScale;
+  }
+
+  function getPianoSnapStep() {
+    return state.pianoSnapEnabled ? state.pianoSnap : 0.5;
+  }
+
+  function snapPianoTick(tick, round = Math.round) {
+    return state.pianoSnapEnabled ? round(tick / state.pianoSnap) * state.pianoSnap : tick;
   }
 
   function setSequencerGridDimensions(stepCount, slotsPerBar = getStepsPerBar()) {
@@ -837,7 +846,7 @@
   function setArrangementScale(scale) {
     const timeline = $("#timeline-scroll");
     const barOffset = timeline.scrollLeft / BAR_WIDTH;
-    state.arrangementScale = Math.max(0.5, Math.min(2, scale));
+    state.arrangementScale = Math.max(0.5, Math.min(4, scale));
     BAR_WIDTH = BASE_BAR_WIDTH * state.arrangementScale;
     renderArrangement();
     timeline.scrollLeft = barOffset * BAR_WIDTH;
@@ -1339,7 +1348,7 @@
     $("#piano-bars-select").value = String(state.pianoBars);
     $("#piano-scale-slider").value = String(Math.round(state.pianoScale * 100));
     $("#piano-scale-value").textContent = `${Math.round(state.pianoScale * 100)}%`;
-    $("#piano-snap-select").value = String(state.pianoSnap);
+    $("#piano-snap-select").value = state.pianoSnapEnabled ? String(state.pianoSnap) : "off";
     $("#piano-note-length-select").value = String(state.pianoNoteLength);
     const keys = $("#piano-roll-keys");
     const ruler = $("#piano-roll-ruler");
@@ -1374,7 +1383,7 @@
         if (!["ArrowLeft", "ArrowRight"].includes(event.key)) return;
         event.preventDefault();
         event.stopPropagation();
-        setPianoCursorTick(state.pianoCursorTick + (event.key === "ArrowRight" ? state.pianoSnap : -state.pianoSnap));
+        setPianoCursorTick(state.pianoCursorTick + (event.key === "ArrowRight" ? getPianoSnapStep() : -getPianoSnapStep()));
       });
       $(".piano-roll-editor").append(playhead);
     }
@@ -1424,7 +1433,7 @@
         element.style.setProperty("--note-color", track.color);
         element.style.left = `${note.startTick * tickWidth + 1}px`;
         element.style.top = `${(PIANO_TOP_MIDI - note.midi) * PIANO_ROW_HEIGHT + 1}px`;
-        element.style.width = `${Math.max(tickWidth, note.durationTicks * tickWidth - 2)}px`;
+        element.style.width = `${Math.max(getPianoSnapStep() * tickWidth, note.durationTicks * tickWidth - 2)}px`;
         element.textContent = midiNoteName(note.midi);
         element.title = `${track.name} · ${midiNoteName(note.midi)} · ${note.durationTicks}/32`;
         element.setAttribute("role", "button");
@@ -1533,7 +1542,7 @@
     if (event.clientX < rect.left || event.clientX > rect.right ||
       event.clientY < rect.top || event.clientY > rect.bottom) return null;
     const rawTick = Math.max(0, Math.min(totalTicks - 1, (event.clientX - rect.left) / getPianoTickWidth()));
-    const startTick = Math.floor(rawTick / state.pianoSnap) * state.pianoSnap;
+    const startTick = Math.max(0, Math.min(totalTicks - 1, snapPianoTick(rawTick, Math.floor)));
     const row = Math.max(0, Math.min(PIANO_TOP_MIDI - PIANO_BOTTOM_MIDI,
       Math.floor((event.clientY - rect.top) / PIANO_ROW_HEIGHT)));
     return {
@@ -1581,7 +1590,7 @@
       if (drawEvent.pointerId !== stroke.pointerId) return;
       const previous = stroke.lastPosition || { x: drawEvent.clientX, y: drawEvent.clientY };
       const stepsPerCell = Math.max(
-        Math.abs(drawEvent.clientX - previous.x) / (getPianoTickWidth() * state.pianoSnap),
+        Math.abs(drawEvent.clientX - previous.x) / (getPianoTickWidth() * getPianoSnapStep()),
         Math.abs(drawEvent.clientY - previous.y) / PIANO_ROW_HEIGHT,
       );
       const segments = Math.max(1, Math.ceil(stepsPerCell * 2));
@@ -1645,16 +1654,16 @@
   function scaleSelectedPianoNoteDurations(originals, anchorId, requestedDuration, totalTicks) {
     const anchor = originals.find((original) => original.note.id === anchorId);
     if (!anchor || originals.length < 2) return false;
-    const snap = state.pianoSnap;
+    const snap = getPianoSnapStep();
     const minimumScale = Math.max(...originals.map((original) => snap / original.durationTicks));
     const maximumScale = Math.min(...originals.map((original) =>
       (totalTicks - original.startTick) / original.durationTicks));
     const scale = Math.max(minimumScale, Math.min(maximumScale, requestedDuration / anchor.durationTicks));
     let changed = false;
     originals.forEach((original) => {
-      const duration = Math.max(1, Math.min(
+      const duration = Math.max(snap, Math.min(
         totalTicks - original.startTick,
-        Math.round(original.durationTicks * scale / snap) * snap,
+        snapPianoTick(original.durationTicks * scale),
       ));
       changed ||= duration !== original.note.durationTicks;
       original.note.durationTicks = duration;
@@ -1695,18 +1704,19 @@
     const noteElements = new Map(Array.from(document.querySelectorAll(".piano-roll-note"), (item) => [item.dataset.noteId, item]));
     const update = (moveEvent) => {
       moved ||= Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) >= 4;
-      const delta = Math.round((moveEvent.clientX - startX) / getPianoTickWidth() / state.pianoSnap) * state.pianoSnap;
+      if (!moved) return;
+      const delta = snapPianoTick((moveEvent.clientX - startX) / getPianoTickWidth());
       if (resizing) {
         if (originals.length > 1) {
           scaleSelectedPianoNoteDurations(
             originals,
             note.id,
-            Math.max(state.pianoSnap, Math.round((durationTicks + delta) / state.pianoSnap) * state.pianoSnap),
+            Math.max(getPianoSnapStep(), snapPianoTick(durationTicks + delta)),
             totalTicks,
           );
         } else {
-          note.durationTicks = Math.max(1, Math.min(totalTicks - note.startTick,
-            Math.round((durationTicks + delta) / state.pianoSnap) * state.pianoSnap));
+          note.durationTicks = Math.max(getPianoSnapStep(), Math.min(totalTicks - note.startTick,
+            snapPianoTick(durationTicks + delta)));
         }
       } else {
         const minStart = Math.min(...originals.map((item) => item.startTick));
@@ -1726,7 +1736,8 @@
         if (!target) return;
         target.style.left = `${original.note.startTick * getPianoTickWidth() + 1}px`;
         target.style.top = `${(PIANO_TOP_MIDI - original.note.midi) * PIANO_ROW_HEIGHT + 1}px`;
-        target.style.width = `${Math.max(getPianoTickWidth(), original.note.durationTicks * getPianoTickWidth() - 2)}px`;
+        target.style.width = `${Math.max(getPianoSnapStep() * getPianoTickWidth(),
+          original.note.durationTicks * getPianoTickWidth() - 2)}px`;
         const resizeHandle = target.querySelector(".piano-roll-note-resize");
         target.textContent = midiNoteName(original.note.midi);
         if (resizeHandle) target.append(resizeHandle);
@@ -1798,8 +1809,9 @@
       state.selectedPianoNoteIds.has(note.id) || note.id === state.selectedPianoNoteId);
     if (!selected.length) return false;
     const totalTicks = state.pianoBars * PIANO_TICKS_PER_BAR;
+    const snapStep = getPianoSnapStep();
     if (resize) {
-      const delta = horizontal * state.pianoSnap;
+      const delta = horizontal * snapStep;
       if (selected.length > 1) {
         const anchor = selected.find((note) => note.id === state.selectedPianoNoteId) || selected.at(-1);
         const originals = selected.map((note) => ({
@@ -1807,11 +1819,10 @@
           startTick: note.startTick,
           durationTicks: note.durationTicks,
         }));
-        const requestedDuration = Math.max(state.pianoSnap,
-          Math.round((anchor.durationTicks + delta) / state.pianoSnap) * state.pianoSnap);
+        const requestedDuration = Math.max(snapStep, snapPianoTick(anchor.durationTicks + delta));
         if (!scaleSelectedPianoNoteDurations(originals, anchor.id, requestedDuration, totalTicks)) return false;
       } else {
-        const minimum = Math.max(...selected.map((note) => state.pianoSnap - note.durationTicks));
+        const minimum = Math.max(...selected.map((note) => snapStep - note.durationTicks));
         const maximum = Math.min(...selected.map((note) => totalTicks - note.startTick - note.durationTicks));
         const boundedDelta = Math.max(minimum, Math.min(maximum, delta));
         if (!boundedDelta || Math.sign(boundedDelta) !== Math.sign(delta)) return false;
@@ -1822,7 +1833,7 @@
       const maxEnd = Math.max(...selected.map((note) => note.startTick + note.durationTicks));
       const minPitch = Math.min(...selected.map((note) => note.midi));
       const maxPitch = Math.max(...selected.map((note) => note.midi));
-      const deltaTicks = Math.max(-minStart, Math.min(totalTicks - maxEnd, horizontal * state.pianoSnap));
+      const deltaTicks = Math.max(-minStart, Math.min(totalTicks - maxEnd, horizontal * snapStep));
       const deltaPitch = Math.max(PIANO_BOTTOM_MIDI - minPitch,
         Math.min(PIANO_TOP_MIDI - maxPitch, vertical));
       if (!deltaTicks && !deltaPitch) return false;
@@ -2900,9 +2911,9 @@
     const secondsPerBar = 240 / state.bpm;
     const loopTicks = getMelLengthBars(mel) * PIANO_TICKS_PER_BAR;
     const elapsedSeconds = Math.max(0, state.audioContext.currentTime - state.playbackStartTime);
-    const elapsedTicks = Math.floor(elapsedSeconds / secondsPerBar * PIANO_TICKS_PER_BAR);
-    const startTick = Math.floor((elapsedTicks % loopTicks) / state.pianoSnap) * state.pianoSnap;
-    const durationTicks = Math.max(1, Math.min(state.pianoNoteLength, loopTicks - startTick));
+    const elapsedTicks = elapsedSeconds / secondsPerBar * PIANO_TICKS_PER_BAR;
+    const startTick = Math.max(0, Math.min(loopTicks - 0.5, snapPianoTick(elapsedTicks % loopTicks, Math.floor)));
+    const durationTicks = Math.max(0.5, Math.min(state.pianoNoteLength, loopTicks - startTick));
     const note = { id: makeId(), trackId: instrument.id, midi, startTick, durationTicks, velocity: 0.8 };
     mel.notes.push(note);
     mel.notes.sort((left, right) => left.startTick - right.startTick);
@@ -2991,10 +3002,11 @@
       if (!patternTrackIds.has(trackId) || !Array.isArray(notes)) return;
       const track = state.tracks.find((item) => item.id === trackId);
       if (!track || track.muted || (hasSolo && !track.solo)) return;
-      notes.filter((note) => note.startTick === tick).forEach((note) => {
+      notes.filter((note) => note.startTick >= tick && note.startTick < tick + 1).forEach((note) => {
         const destination = outputTrack && outputTrack !== track ? outputTrack : track;
         const outputNode = destination !== track ? getPatternSourceGain(destination, track) : null;
-        const noteTime = time + (Math.floor(tick / 2) % 2 === 1 ? getStepDuration() * (state.swing / 100) : 0);
+        const noteTime = time + (note.startTick - tick) * getSchedulerTickDuration() +
+          (Math.floor(note.startTick / 2) % 2 === 1 ? getStepDuration() * (state.swing / 100) : 0);
         playPianoNote(track, noteTime, note.midi,
           note.durationTicks * getSchedulerTickDuration(), note.velocity ?? 0.8, destination, outputNode, note);
       });
@@ -3071,11 +3083,6 @@
           scheduleStep(step % gridStepCount, eventTime + eventSwingOffset, pattern, loopIndex);
         });
         schedulePatternPianoNotes(pattern, clockStep % (pattern.steps * 2), state.nextStepTime, null);
-        if (getGridTicksPerStep(pattern) < 1 ||
-          Object.values(pattern.stepPianoNotes || {}).some((notes) => notes.some((note) => !Number.isInteger(note.startTick)))) {
-          schedulePatternPianoNotes(pattern, (clockStep + 0.5) % (pattern.steps * 2),
-            state.nextStepTime + getSchedulerTickDuration() / 2, null);
-        }
         if (state.metronome && state.recordingMetronomeTimer === null && clockStep % 8 === 0) {
           triggerClick(state.nextStepTime, clockStep % 32 === 0);
         }
@@ -3287,11 +3294,6 @@
             scheduleStep(step % getGridStepCount(pattern), eventTime + swingOffset, pattern, null, false, player);
           });
           schedulePatternPianoNotes(pattern, clockStep % (pattern.steps * 2), player.nextStepTime);
-          if (getGridTicksPerStep(pattern) < 1 ||
-            Object.values(pattern.stepPianoNotes || {}).some((notes) => notes.some((note) => !Number.isInteger(note.startTick)))) {
-            schedulePatternPianoNotes(pattern, (clockStep + 0.5) % (pattern.steps * 2),
-              player.nextStepTime + getSchedulerTickDuration() / 2);
-          }
         }
       } else {
         scheduleWorkspaceMelLoop(player, now, lookAhead);
@@ -5469,7 +5471,7 @@
       state.clipboard = {
         type: "piano-roll",
         items: notes.map((note) => ({ ...note, startOffset: note.startTick - firstTick })),
-        span: Math.max(state.pianoSnap, endTick - firstTick),
+        span: Math.max(getPianoSnapStep(), endTick - firstTick),
         pasteCount: 0,
       };
       return;
@@ -7183,6 +7185,7 @@
       pianoBars: savedMel?.bars || state.pianoBars,
       pianoScale: state.pianoScale,
       pianoSnap: state.pianoSnap,
+      pianoSnapEnabled: state.pianoSnapEnabled,
       pianoNoteLength: state.pianoNoteLength,
       selectedPianoTrackId: savedMel?.instrumentId || state.selectedPianoTrackId,
       arrangementBars: state.arrangementBars,
@@ -7374,9 +7377,9 @@
       if (Number.isFinite(saved.bpm)) state.bpm = Math.max(60, Math.min(180, Math.round(saved.bpm)));
       if (Number.isFinite(saved.swing)) state.swing = Math.max(0, Math.min(45, Math.round(saved.swing)));
       if (Number.isFinite(saved.steps)) state.steps = normalizePatternSteps(saved.steps);
-      if (Number.isFinite(saved.arrangementScale)) state.arrangementScale = Math.max(0.5, Math.min(2, saved.arrangementScale));
-      if (Number.isFinite(saved.pianoScale)) state.pianoScale = Math.max(0.5, Math.min(2, saved.pianoScale));
-      if (Number.isFinite(saved.sequencerScale)) state.sequencerScale = Math.max(0.5, Math.min(2, saved.sequencerScale));
+      if (Number.isFinite(saved.arrangementScale)) state.arrangementScale = Math.max(0.5, Math.min(4, saved.arrangementScale));
+      if (Number.isFinite(saved.pianoScale)) state.pianoScale = Math.max(0.5, Math.min(4, saved.pianoScale));
+      if (Number.isFinite(saved.sequencerScale)) state.sequencerScale = Math.max(0.5, Math.min(4, saved.sequencerScale));
       if (Number.isFinite(saved.arrangementBars)) state.arrangementBars = Math.max(32, Math.min(MAX_ARRANGEMENT_BARS, Math.round(saved.arrangementBars)));
       if (Number.isFinite(saved.arrangementCursor)) state.arrangementCursor = Math.max(0, Math.min(state.arrangementBars - 0.001, saved.arrangementCursor));
       if (typeof saved.arrangementSnap === "boolean") state.arrangementSnap = saved.arrangementSnap;
@@ -7488,15 +7491,15 @@
                 stepPianoNotes: Object.fromEntries(Object.entries(pattern.stepPianoNotes)
                   .filter(([trackId, notes]) => state.tracks.some((track) => track.id === trackId) && Array.isArray(notes))
                   .map(([trackId, notes]) => [trackId, notes
-                    .filter((note) => note && typeof note.id === "string" && Number.isInteger(note.startTick) &&
-                      Number.isInteger(note.durationTicks) && Number.isInteger(note.midi))
+                    .filter((note) => note && typeof note.id === "string" && Number.isFinite(note.startTick) &&
+                      Number.isFinite(note.durationTicks) && Number.isInteger(note.midi))
                     .slice(0, 4096)
                     .map((note) => {
-                      const startTick = Math.max(0, Math.min(patternSteps * 2 - 1, note.startTick));
+                      const startTick = Math.max(0, Math.min(patternSteps * 2 - 0.5, note.startTick));
                       return {
                         id: note.id,
                         startTick,
-                        durationTicks: Math.max(1, Math.min(patternSteps * 2 - startTick, note.durationTicks)),
+                        durationTicks: Math.max(0.5, Math.min(patternSteps * 2 - startTick, note.durationTicks)),
                         midi: Math.max(PIANO_BOTTOM_MIDI, Math.min(PIANO_TOP_MIDI, note.midi)),
                         velocity: Number.isFinite(note.velocity) ? Math.max(0.1, Math.min(1, note.velocity)) : 0.8,
                       };
@@ -7553,23 +7556,24 @@
       if (Number.isFinite(saved.pianoCursorTick)) state.pianoCursorTick = Math.max(0, Math.min(state.pianoBars * PIANO_TICKS_PER_BAR - 0.001, saved.pianoCursorTick));
       if (Number.isFinite(saved.pianoStartBar)) state.pianoStartBar = Math.max(0, Math.min(MAX_ARRANGEMENT_BARS - 1, Math.floor(saved.pianoStartBar)));
       if (Number.isInteger(saved.pianoSnap) && [1, 2, 4, 8].includes(saved.pianoSnap)) state.pianoSnap = saved.pianoSnap;
+      if (typeof saved.pianoSnapEnabled === "boolean") state.pianoSnapEnabled = saved.pianoSnapEnabled;
       if (Number.isInteger(saved.pianoNoteLength) && [1, 2, 4, 8].includes(saved.pianoNoteLength)) state.pianoNoteLength = saved.pianoNoteLength;
       if (typeof saved.selectedPianoTrackId === "string" && state.tracks.some((track) => track.id === saved.selectedPianoTrackId)) {
         state.selectedPianoTrackId = saved.selectedPianoTrackId;
       }
       if (Array.isArray(saved.pianoNotes)) {
         state.pianoNotes = saved.pianoNotes
-          .filter((note) => note && typeof note.id === "string" && Number.isInteger(note.startTick) && Number.isInteger(note.durationTicks) &&
+          .filter((note) => note && typeof note.id === "string" && Number.isFinite(note.startTick) && Number.isFinite(note.durationTicks) &&
             Number.isInteger(note.midi) && state.tracks.some((track) => track.id === note.trackId))
           .slice(0, 4096)
           .map((note) => {
-            const startTick = Math.max(0, Math.min(8 * PIANO_TICKS_PER_BAR - 1, note.startTick));
+            const startTick = Math.max(0, Math.min(8 * PIANO_TICKS_PER_BAR - 0.5, note.startTick));
             return {
               id: note.id,
               trackId: note.trackId,
               midi: Math.max(PIANO_BOTTOM_MIDI, Math.min(PIANO_TOP_MIDI, note.midi)),
               startTick,
-              durationTicks: Math.max(1, Math.min(8 * PIANO_TICKS_PER_BAR - startTick, note.durationTicks)),
+              durationTicks: Math.max(0.5, Math.min(8 * PIANO_TICKS_PER_BAR - startTick, note.durationTicks)),
               velocity: Number.isFinite(note.velocity) ? Math.max(0.1, Math.min(1, note.velocity)) : 0.8,
             };
           });
@@ -7582,17 +7586,17 @@
               ? mel.instrumentId
               : state.tracks.find((track) => track.id === "piano-grand")?.id || state.tracks[0]?.id || "";
             const notes = Array.isArray(mel.notes) ? mel.notes
-              .filter((note) => note && typeof note.id === "string" && Number.isInteger(note.startTick) &&
-                Number.isInteger(note.durationTicks) && Number.isInteger(note.midi))
+              .filter((note) => note && typeof note.id === "string" && Number.isFinite(note.startTick) &&
+                Number.isFinite(note.durationTicks) && Number.isInteger(note.midi))
               .slice(0, 4096)
               .map((note) => {
-                const startTick = Math.max(0, Math.min(8 * PIANO_TICKS_PER_BAR - 1, note.startTick));
+                const startTick = Math.max(0, Math.min(8 * PIANO_TICKS_PER_BAR - 0.5, note.startTick));
                 return {
                   id: note.id,
                   trackId: instrumentId,
                   midi: Math.max(PIANO_BOTTOM_MIDI, Math.min(PIANO_TOP_MIDI, note.midi)),
                   startTick,
-                  durationTicks: Math.max(1, Math.min(8 * PIANO_TICKS_PER_BAR - startTick, note.durationTicks)),
+                  durationTicks: Math.max(0.5, Math.min(8 * PIANO_TICKS_PER_BAR - startTick, note.durationTicks)),
                   velocity: Number.isFinite(note.velocity) ? Math.max(0.1, Math.min(1, note.velocity)) : 0.8,
                 };
               })
@@ -8064,7 +8068,8 @@
       }
     });
     $("#piano-snap-select").addEventListener("change", (event) => {
-      state.pianoSnap = Number(event.target.value);
+      state.pianoSnapEnabled = event.target.value !== "off";
+      if (state.pianoSnapEnabled) state.pianoSnap = Number(event.target.value);
       saveState();
     });
     $("#piano-note-length-select").addEventListener("change", (event) => {
@@ -8257,6 +8262,7 @@
       state.pianoScale = 1;
       state.pianoDrawMode = false;
       state.pianoSnap = 2;
+      state.pianoSnapEnabled = true;
       state.pianoNoteLength = 2;
       state.selectedPianoTrackId = "piano-grand";
       state.selectedPianoNoteId = null;
