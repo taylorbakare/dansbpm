@@ -262,10 +262,12 @@
                         </label>
                         <button class="quiet-button" id="clear-piano-roll-button" type="button">Clear notes</button>
                       </div>
+                      <div class="piano-roll-ruler-viewport">
+                        <div class="piano-roll-ruler" id="piano-roll-ruler"></div>
+                      </div>
                       <div class="piano-roll-scroll" id="piano-roll-scroll">
                         <div class="piano-roll-keys" id="piano-roll-keys" aria-label="Piano keyboard"></div>
                         <div class="piano-roll-editor">
-                          <div class="piano-roll-ruler" id="piano-roll-ruler"></div>
                           <div class="piano-roll-grid" id="piano-roll-grid" aria-label="Piano roll note grid"></div>
                         </div>
                       </div>
@@ -344,6 +346,10 @@
             </div>
           </div>
         </section>
+
+        <div class="arrangement-track-context-menu" id="arrangement-track-context-menu" role="menu" hidden>
+          <button type="button" id="add-empty-track-below" role="menuitem">Add empty track below</button>
+        </div>
 
         <dialog class="source-browser-dialog" id="source-browser-dialog" aria-label="Asset library">
           <aside class="source-sidebar">

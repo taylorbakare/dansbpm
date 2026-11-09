@@ -1416,6 +1416,7 @@
     const keys = $("#piano-roll-keys");
     const ruler = $("#piano-roll-ruler");
     const grid = $("#piano-roll-grid");
+    const pianoRollScroll = $("#piano-roll-scroll");
     keys.replaceChildren();
     ruler.replaceChildren();
     grid.replaceChildren();
@@ -1424,6 +1425,7 @@
     const width = totalTicks * tickWidth;
     const height = (PIANO_TOP_MIDI - PIANO_BOTTOM_MIDI + 1) * PIANO_ROW_HEIGHT;
     ruler.style.width = `${width}px`;
+    ruler.style.transform = `translateX(-${pianoRollScroll.scrollLeft}px)`;
     grid.style.width = `${width}px`;
     grid.style.height = `${height}px`;
     grid.style.setProperty("--piano-tick-width", `${tickWidth}px`);
@@ -3654,10 +3656,11 @@
     return `Track ${number}`;
   }
 
-  function createArrangementTrack(name = getNextArrangementTrackName()) {
+  function createArrangementTrack(name = getNextArrangementTrackName(), insertAfterTrackId = null) {
     const track = {
       id: makeId(),
       name,
+      insertAfterTrackId,
       color: TRACK_COLORS[state.arrangementTracks.length % TRACK_COLORS.length],
       clips: [],
       volume: 0.8,
@@ -4000,6 +4003,46 @@
     });
   }
 
+  function getArrangementTrackIdFromTarget(target) {
+    if (!(target instanceof Element)) return null;
+    const label = target.closest(".arrangement-label[data-track-id]");
+    let trackId = label?.dataset.trackId || "";
+    if (!trackId) {
+      const laneId = target.closest(".timeline-lane[data-track-id]")?.dataset.trackId || "";
+      trackId = laneId.startsWith("pattern:")
+        ? laneId.slice("pattern:".length)
+        : laneId.startsWith("mel:")
+          ? laneId.slice("mel:".length)
+          : laneId;
+    }
+    const isPatternTrack = state.patternClips.some((clip) =>
+      (clip.trackId || clip.patternId) === trackId);
+    return state.arrangementTracks.some((track) => track.id === trackId) ||
+      state.melTracks.some((track) => track.id === trackId) || isPatternTrack
+      ? trackId
+      : null;
+  }
+
+  function closeArrangementTrackContextMenu() {
+    const menu = $("#arrangement-track-context-menu");
+    menu.hidden = true;
+    delete menu.dataset.trackId;
+  }
+
+  function openArrangementTrackContextMenu(event) {
+    const trackId = getArrangementTrackIdFromTarget(event.target);
+    if (!trackId) {
+      closeArrangementTrackContextMenu();
+      return;
+    }
+    event.preventDefault();
+    const menu = $("#arrangement-track-context-menu");
+    menu.dataset.trackId = trackId;
+    menu.hidden = false;
+    menu.style.left = `${Math.max(8, Math.min(event.clientX, window.innerWidth - menu.offsetWidth - 8))}px`;
+    menu.style.top = `${Math.max(8, Math.min(event.clientY, window.innerHeight - menu.offsetHeight - 8))}px`;
+  }
+
   function renderArrangement() {
     BAR_WIDTH = BASE_BAR_WIDTH * state.arrangementScale;
     $("#arrangement-empty").hidden = state.view !== "arrangement";
@@ -4142,6 +4185,44 @@
       track.clips.forEach((clip) => lane.append(createAudioClip(track, clip)));
       content.append(lane);
     });
+
+    const rows = [
+      ...patternTracks.map((track) => ({ id: track.id, type: "pattern" })),
+      ...state.melTracks.map((track) => ({ id: track.id, type: "mel" })),
+      ...state.arrangementTracks.map((track) => ({ id: track.id, type: "audio" })),
+    ];
+    const rowsById = new Map(rows.map((row) => [row.id, row]));
+    const childrenByParent = new Map();
+    const childIds = new Set();
+    state.arrangementTracks.forEach((track) => {
+      const parentId = track.insertAfterTrackId;
+      if (!parentId || !rowsById.has(parentId) || parentId === track.id) return;
+      const children = childrenByParent.get(parentId) || [];
+      children.push(rowsById.get(track.id));
+      childrenByParent.set(parentId, children);
+      childIds.add(track.id);
+    });
+    const orderedRows = [];
+    const addedRowIds = new Set();
+    const appendRow = (row) => {
+      if (!row || addedRowIds.has(row.id)) return;
+      addedRowIds.add(row.id);
+      orderedRows.push(row);
+      childrenByParent.get(row.id)?.forEach(appendRow);
+    };
+    rows.filter((row) => !childIds.has(row.id)).forEach(appendRow);
+    rows.forEach(appendRow);
+    const labelsById = new Map(Array.from(labels.children, (label) => [label.dataset.trackId, label]));
+    const lanesById = new Map(Array.from(content.querySelectorAll(".timeline-lane"), (lane) =>
+      [lane.dataset.trackId, lane]));
+    const orderedLabels = orderedRows.map((row) => labelsById.get(row.id)).filter(Boolean);
+    const orderedLanes = orderedRows.map((row) => lanesById.get(
+      row.type === "pattern" ? `pattern:${row.id}` : row.type === "mel" ? `mel:${row.id}` : row.id,
+    )).filter(Boolean);
+    const timelineRuler = content.firstElementChild;
+    labels.replaceChildren(...orderedLabels);
+    content.replaceChildren(timelineRuler, ...orderedLanes);
+
     const dropLabel = document.createElement("div");
     const dropLane = createTimelineLane(hasTimelineTracks ? "new-track" : DEFAULT_ARRANGEMENT_TRACK_ID, width);
     dropLane.classList.add("new-track-drop-lane");
@@ -6787,7 +6868,6 @@
           showToast(`Could not restore ${record.name}.`);
         }
       }
-      state.arrangementTracks = state.arrangementTracks.filter((track) => track.clips.length > 0);
       if (sampleRecords.length) renderTracks();
       updateArrangementLength();
       renderArrangement();
@@ -7599,6 +7679,7 @@
       arrangementTracks: state.arrangementTracks.map((track) => ({
         id: track.id,
         name: track.name,
+        insertAfterTrackId: track.insertAfterTrackId || null,
         color: track.color,
         volume: track.volume,
         muted: track.muted,
@@ -7939,6 +8020,7 @@
           .map((track) => ({
             id: track.id,
             name: track.name,
+            insertAfterTrackId: typeof track.insertAfterTrackId === "string" ? track.insertAfterTrackId : null,
             color: isPatternColor(track.color) ? track.color : TRACK_COLORS[0],
             clips: [],
             volume: Number.isFinite(track.volume) ? Math.max(0, Math.min(1, track.volume)) : 0.8,
@@ -8614,6 +8696,9 @@
       if (!event.target.closest(".piano-roll-note")) addPianoNoteFromPointer(event);
     });
     $("#piano-roll-grid").addEventListener("pointerdown", startPianoSelection);
+    $("#piano-roll-scroll").addEventListener("scroll", (event) => {
+      $("#piano-roll-ruler").style.transform = `translateX(-${event.currentTarget.scrollLeft}px)`;
+    });
     $("#clear-piano-roll-button").addEventListener("click", () => {
       state.pianoNotes = [];
       state.selectedPianoNoteId = null;
@@ -8632,6 +8717,31 @@
     $("#arrangement-track-labels").addEventListener("scroll", (event) => {
       const timeline = $("#timeline-scroll");
       if (timeline.scrollTop !== event.currentTarget.scrollTop) timeline.scrollTop = event.currentTarget.scrollTop;
+    });
+    $("#arrangement-track-labels").addEventListener("contextmenu", openArrangementTrackContextMenu);
+    $("#timeline-content").addEventListener("contextmenu", openArrangementTrackContextMenu);
+    document.addEventListener("pointerdown", (event) => {
+      const menu = $("#arrangement-track-context-menu");
+      if (!menu.hidden && event.target instanceof Node && !menu.contains(event.target)) {
+        closeArrangementTrackContextMenu();
+      }
+    }, true);
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !$("#arrangement-track-context-menu").hidden) {
+        closeArrangementTrackContextMenu();
+      }
+    }, true);
+    $("#add-empty-track-below").addEventListener("click", () => {
+      const menu = $("#arrangement-track-context-menu");
+      const parentTrackId = menu.dataset.trackId;
+      if (!parentTrackId) return;
+      const track = createArrangementTrack(getNextArrangementTrackName(), parentTrackId);
+      state.selectedMixerTrackId = track.id;
+      closeArrangementTrackContextMenu();
+      renderArrangement();
+      saveState();
+      Array.from($("#arrangement-track-labels").querySelectorAll(".arrangement-label")).find((label) =>
+        label.dataset.trackId === track.id)?.scrollIntoView({ block: "nearest" });
     });
     $("#timeline-content").addEventListener("pointerdown", startArrangementSelection);
     $("#timeline-content").addEventListener("click", (event) => {

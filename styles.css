@@ -344,6 +344,10 @@ kbd { border: 1px solid #393a3f; border-radius: 3px; padding: 2px 4px; color: #b
 .arrangement-label-actions button:hover, .arrangement-label-actions button.is-active { border-color: var(--stroke); background: #27282c; color: var(--text); }
 .arrangement-label-actions svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .arrangement-volume { width: 38px; height: 2px; margin: 0 0 0 5px; accent-color: var(--accent); }
+.arrangement-track-context-menu { position: fixed; z-index: 80; min-width: 190px; border: 1px solid #424349; border-radius: 6px; background: #232428; padding: 4px; box-shadow: 0 8px 24px #0009; }
+.arrangement-track-context-menu[hidden] { display: none; }
+.arrangement-track-context-menu button { width: 100%; border: 0; border-radius: 4px; background: transparent; padding: 8px 10px; color: #d7d8d4; font-size: 10px; text-align: left; cursor: pointer; }
+.arrangement-track-context-menu button:hover, .arrangement-track-context-menu button:focus-visible { outline: none; background: #303136; }
 .add-track-button { height: 34px; flex: 0 0 34px; margin: 9px 10px; border: 1px dashed #3a3b40; border-radius: 5px; background: transparent; color: #8d8e94; font-size: 10px; cursor: pointer; }
 .add-track-button:hover { border-color: #74765e; color: var(--accent); }
 .timeline-scroll { overflow: auto; overscroll-behavior: contain; scrollbar-color: #45464a #1b1c1f; scrollbar-width: thin; }
@@ -406,12 +410,13 @@ kbd { border: 1px solid #393a3f; border-radius: 3px; padding: 2px 4px; color: #b
 .piano-roll-toolbar .quiet-button { height: 30px; }
 .piano-roll-toolbar #piano-draw-mode-button[aria-pressed="true"] { border-color: #687641; background: var(--accent-soft); color: var(--accent); }
 .piano-roll-scroll { min-height: 0; flex: 1; display: flex; overflow: auto; border: 1px solid #303136; background: #17181b; scrollbar-color: #45464a #1b1c1f; scrollbar-width: thin; }
+.piano-roll-ruler-viewport { position: sticky; top: 0; z-index: 5; height: 28px; min-height: 28px; flex: 0 0 28px; overflow: hidden; margin-left: 53px; width: calc(100% - 53px); background: #202125; }
 .piano-roll-keys { position: sticky; left: 0; z-index: 3; flex: 0 0 52px; width: 52px; background: #1c1d20; box-shadow: 2px 0 5px #0005; }
 .piano-roll-key { width: 52px; height: 18px; display: block; border: 0; border-bottom: 1px solid #35363a; background: #d3d4d0; padding: 0 4px; color: #242529; font-family: var(--mono); font-size: 8px; text-align: right; cursor: pointer; }
 .piano-roll-key.is-black { background: #38393d; color: #ddd; }
 .piano-roll-key.is-octave { color: #9aab63; font-weight: 700; }
 .piano-roll-editor { position: relative; flex: 0 0 auto; }
-.piano-roll-ruler { position: sticky; top: 0; z-index: 5; height: 28px; display: flex; background: #202125; }
+.piano-roll-ruler { height: 28px; display: flex; background: #202125; }
 .piano-roll-bar { width: var(--piano-bar-width, 512px); flex: 0 0 var(--piano-bar-width, 512px); display: grid; grid-template-columns: repeat(4, var(--piano-beat-width, 128px)); border-right: 1px solid #54565b; color: #aaa; font-family: var(--mono); font-size: 8px; }
 .piano-roll-bar > span { display: flex; align-items: center; border-right: 1px solid #333439; padding-left: 5px; }
 .piano-roll-bar > span:first-child { color: var(--accent); }
