@@ -418,6 +418,7 @@
     sequencerScale: 1,
     selectedMixerTrackId: null,
     selectedMixerEffectId: null,
+    mixerRoutingDialogTrackId: null,
     arrangementDrag: null,
     mixerMeterAnimation: null,
     mixerEffectAnimation: null,
@@ -4140,10 +4141,19 @@
 
   function removeEffectTrack(track) {
     if (!state.effectTracks.includes(track)) return;
+    if (state.mixerRoutingDialogTrackId === track.id) $("#mixer-routing-dialog").close();
     disconnectTrackAudio(track);
     state.effectTracks = state.effectTracks.filter((item) => item !== track);
     if (state.selectedMixerTrackId === track.id) state.selectedMixerTrackId = MASTER_MIXER_TRACK_ID;
     rebuildMixerAudioRouting();
+    saveState();
+    renderMixer();
+  }
+
+  function renameEffectTrack(track) {
+    const name = window.prompt("Rename Effects Track", track.name)?.trim();
+    if (!name || name === track.name) return;
+    track.name = name;
     saveState();
     renderMixer();
   }
@@ -4164,17 +4174,12 @@
     renderMixer();
   }
 
-  function makeEffectTrackRoutingControls(track) {
-    const panel = document.createElement("section");
-    panel.className = "mixer-routing-panel";
-    const heading = document.createElement("h3");
-    heading.textContent = "Route tracks through this Effects Track";
-    panel.append(heading);
-    const hint = document.createElement("p");
-    hint.textContent = "Each track routes through one Effects Track at a time.";
-    panel.append(hint);
-    const choices = document.createElement("div");
-    choices.className = "mixer-routing-choices";
+  function openMixerRoutingDialog(track) {
+    if (!state.effectTracks.includes(track)) return;
+    state.mixerRoutingDialogTrackId = track.id;
+    $("#mixer-routing-title").textContent = track.name;
+    const choices = $("#mixer-routing-choices");
+    choices.replaceChildren();
     const sources = getMixerSourceTracks();
     if (!sources.length) {
       const empty = document.createElement("span");
@@ -4196,13 +4201,7 @@
       label.append(checkbox, name);
       choices.append(label);
     });
-    const removeButton = document.createElement("button");
-    removeButton.className = "quiet-button mixer-remove-effects-track";
-    removeButton.type = "button";
-    removeButton.textContent = "Remove Effects Track";
-    removeButton.addEventListener("click", () => removeEffectTrack(track));
-    panel.append(choices, removeButton);
-    return panel;
+    $("#mixer-routing-dialog").showModal();
   }
 
   function renderMixer() {
@@ -4229,7 +4228,30 @@
         selectArrangementTrack(track.id);
         renderMixer();
       });
-      row.append(title, makeMixerVolumeMonitor(track), makeMixerVolumeKnob(track));
+      if (track.kind === "mixer-effects") {
+        const titleGroup = document.createElement("div");
+        titleGroup.className = "mixer-track-title-group";
+        const renameButton = document.createElement("button");
+        renameButton.className = "mixer-track-action";
+        renameButton.type = "button";
+        renameButton.textContent = "Rename";
+        renameButton.setAttribute("aria-label", `Rename ${track.name}`);
+        renameButton.addEventListener("click", () => renameEffectTrack(track));
+        const routeButton = document.createElement("button");
+        routeButton.className = "mixer-track-action";
+        routeButton.type = "button";
+        routeButton.textContent = "Route";
+        routeButton.setAttribute("aria-label", `Route tracks through ${track.name}`);
+        routeButton.addEventListener("click", () => {
+          selectArrangementTrack(track.id);
+          renderMixer();
+          openMixerRoutingDialog(track);
+        });
+        titleGroup.append(title, renameButton, routeButton);
+        row.append(titleGroup, makeMixerVolumeMonitor(track), makeMixerVolumeKnob(track));
+      } else {
+        row.append(title, makeMixerVolumeMonitor(track), makeMixerVolumeKnob(track));
+      }
       const effectTarget = document.createElement("div");
       effectTarget.className = "mixer-track-effects";
       effectTarget.setAttribute("aria-label", `${track.name} effects; drop effects here`);
@@ -4250,9 +4272,6 @@
       effectTarget.append(makeMixerEffectSlots(track));
       row.append(effectTarget);
       trackList.append(row);
-      if (track.kind === "mixer-effects" && track.id === state.selectedMixerTrackId) {
-        trackList.append(makeEffectTrackRoutingControls(track));
-      }
     });
 
     const library = document.createElement("aside");
@@ -8464,6 +8483,18 @@
     });
     $("#mixer-effect-dialog").addEventListener("click", (event) => {
       if (event.target === $("#mixer-effect-dialog")) $("#mixer-effect-dialog").close();
+    });
+    $("#mixer-routing-close").addEventListener("click", () => $("#mixer-routing-dialog").close());
+    $("#mixer-routing-done").addEventListener("click", () => $("#mixer-routing-dialog").close());
+    $("#mixer-routing-remove").addEventListener("click", () => {
+      const track = state.effectTracks.find((item) => item.id === state.mixerRoutingDialogTrackId);
+      if (track) removeEffectTrack(track);
+    });
+    $("#mixer-routing-dialog").addEventListener("close", () => {
+      state.mixerRoutingDialogTrackId = null;
+    });
+    $("#mixer-routing-dialog").addEventListener("click", (event) => {
+      if (event.target === $("#mixer-routing-dialog")) $("#mixer-routing-dialog").close();
     });
     $("#new-pattern-button").addEventListener("click", createPattern);
     $("#new-pattern-sequencer-button").addEventListener("click", createPattern);
