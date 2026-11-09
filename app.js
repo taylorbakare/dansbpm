@@ -4857,7 +4857,7 @@
       }
       const selectors = ["BracketLeft", "BracketRight"].filter((code) => djHeldKeys.has(code));
       const knobKeyHeld = Object.keys(DJ_KNOB_KEYS).some((code) => djHeldKeys.has(code));
-      if (selectors.length > 1 || (selectors.length && knobKeyHeld)) {
+      if (selectors.length > 1 || (selectors.length && (knobKeyHeld || djHeldKeys.has("Space")))) {
         selectors.forEach((code) => djDeckChordUsed.add(code));
       }
     } else {
@@ -4893,10 +4893,21 @@
       return;
     }
     if (djViewExpanded && event.code === "Space") {
-      if (dialogOpen || (djControlFocused && !(event.ctrlKey || event.altKey || event.metaKey))) return;
+      const selectors = ["BracketLeft", "BracketRight"].filter((code) => djHeldKeys.has(code));
+      if (dialogOpen || (djControlFocused && !selectors.length &&
+        !(event.ctrlKey || event.altKey || event.metaKey))) return;
       event.preventDefault();
       event.stopPropagation();
       if (event.repeat) return;
+      if (selectors.length) {
+        selectors.forEach((code) => djDeckChordUsed.add(code));
+        if (selectors.length === 1) {
+          const deckId = selectors[0] === "BracketLeft" ? "A" : "B";
+          setActiveDjDeck(deckId);
+          toggleDjDeck(deckId);
+        }
+        return;
+      }
       if ((event.ctrlKey || event.metaKey) && event.altKey) return;
       if (event.altKey) toggleDjDeck("B");
       else if (event.ctrlKey || event.metaKey) toggleDjDeck("A");
