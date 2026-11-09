@@ -5067,7 +5067,7 @@
     saveState();
   }
 
-  function beginArrangementItemDrag(event, element, type, durationBars) {
+  function beginArrangementItemDrag(event, element, type, durationBars, startBar) {
     clearArrangementDragPreview();
     const preview = element.cloneNode(true);
     preview.classList.remove("is-selected");
@@ -5075,7 +5075,17 @@
     preview.classList.add("arrangement-drag-preview");
     preview.setAttribute("aria-hidden", "true");
     preview.draggable = false;
-    state.arrangementDrag = { type, durationBars, preview, dragImage: null };
+    const lane = element.closest(".timeline-lane");
+    const pointerBar = lane
+      ? (event.clientX - lane.getBoundingClientRect().left) / BAR_WIDTH
+      : startBar;
+    state.arrangementDrag = {
+      type,
+      durationBars,
+      grabOffsetBars: Math.max(0, Math.min(durationBars, pointerBar - startBar)),
+      preview,
+      dragImage: null,
+    };
     if (event.dataTransfer) {
       const transparentImage = document.createElement("canvas");
       transparentImage.width = 1;
@@ -5097,7 +5107,7 @@
       preview = drag.preview.cloneNode(true);
       lane.append(preview);
     }
-    const startBar = clampArrangementStart(barAtPointer(event, lane), drag.durationBars);
+    const startBar = arrangementDropStartAtPointer(event, lane);
     preview.style.left = `${startBar * BAR_WIDTH + 4}px`;
     preview.style.width = `${Math.max(28, drag.durationBars * BAR_WIDTH - 8)}px`;
   }
@@ -5146,7 +5156,7 @@
     lane.addEventListener("drop", async (event) => {
       event.preventDefault();
       lane.classList.remove("is-drop-target");
-      const startBar = barAtPointer(event, lane);
+      const startBar = arrangementDropStartAtPointer(event, lane);
       clearArrangementDragPreview();
       const isPatternLane = trackId.startsWith("pattern:");
       const files = Array.from(event.dataTransfer?.files || []);
@@ -5250,6 +5260,13 @@
   function barAtPointer(event, lane) {
     const bar = (event.clientX - lane.getBoundingClientRect().left) / BAR_WIDTH;
     return Math.max(0, Math.min(MAX_ARRANGEMENT_BARS - 0.001, snapArrangementBar(bar)));
+  }
+
+  function arrangementDropStartAtPointer(event, lane) {
+    const drag = state.arrangementDrag;
+    if (!drag) return barAtPointer(event, lane);
+    const pointerBar = (event.clientX - lane.getBoundingClientRect().left) / BAR_WIDTH;
+    return clampArrangementStart(pointerBar - drag.grabOffsetBars, drag.durationBars);
   }
 
   function startArrangementCursorDrag(event, lane) {
@@ -5478,7 +5495,7 @@
       if (!(event.shiftKey && (event.ctrlKey || event.metaKey))) selectArrangementItem("audio", clip.id, event);
       event.dataTransfer?.setData("application/x-pulsegrid-audio-clip", JSON.stringify({ clipId: clip.id, sourceTrackId: track.id }));
       if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
-      beginArrangementItemDrag(event, element, "audio", durationBars);
+      beginArrangementItemDrag(event, element, "audio", durationBars, clip.startBar);
     });
     element.addEventListener("click", (event) => {
       if (event.target.closest(".clip-resize-handle")) return;
@@ -5514,7 +5531,7 @@
       if (!(event.shiftKey && (event.ctrlKey || event.metaKey))) selectArrangementItem("mel", clip.id, event);
       event.dataTransfer?.setData("application/x-pulsegrid-mel-clip", JSON.stringify({ clipId: clip.id, sourceTrackId: track.id }));
       if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
-      beginArrangementItemDrag(event, element, "mel", bars);
+      beginArrangementItemDrag(event, element, "mel", bars, clip.startBar);
     });
     element.addEventListener("click", (event) => {
       if (event.target.closest(".clip-resize-handle")) return;
@@ -5557,7 +5574,7 @@
       if (!(event.shiftKey && (event.ctrlKey || event.metaKey))) selectArrangementItem("pattern", clip.id, event);
       event.dataTransfer?.setData("application/x-pulsegrid-pattern-clip", JSON.stringify({ clipId: clip.id }));
       if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
-      beginArrangementItemDrag(event, element, "pattern", totalBars);
+      beginArrangementItemDrag(event, element, "pattern", totalBars, clip.startBar);
     });
     element.addEventListener("click", (event) => {
       if (event.target.closest(".clip-resize-handle")) return;
