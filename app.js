@@ -408,6 +408,7 @@
     pianoSnap: 2,
     pianoSnapEnabled: true,
     pianoNoteLength: 2,
+    soundDurationEdits: {},
     selectedPianoTrackId: "piano-grand",
     selectedPianoNoteId: null,
     selectedPianoNoteIds: new Set(),
@@ -2018,6 +2019,7 @@
             choice.type = "button";
             choice.style.setProperty("--instrument-color", instrument.color);
             choice.textContent = instrument.name;
+            choice.addEventListener("contextmenu", (event) => openSoundDurationMenu(instrument, event));
             choice.addEventListener("click", () => {
               library.querySelectorAll(".step-instrument-choice.is-selected").forEach((selectedChoice) => {
                 selectedChoice.classList.remove("is-selected");
@@ -2048,6 +2050,51 @@
       ? "Choose a piano roll instrument"
       : targetTrackId ? "Choose a row instrument" : "Choose an instrument";
     $("#step-instrument-dialog").showModal();
+  }
+
+  function getSoundDurationKey(track) {
+    return track.sourceId || track.id;
+  }
+
+  function getSoundDurationScale(track) {
+    return state.soundDurationEdits[getSoundDurationKey(track)] ?? 1;
+  }
+
+  function closeSoundDurationMenu() {
+    const menu = $("#sound-duration-menu");
+    menu.hidden = true;
+    delete menu.dataset.soundId;
+  }
+
+  function openSoundDurationMenu(track, event) {
+    if (track.kind === "drumkit") return;
+    event.preventDefault();
+    const menu = $("#sound-duration-menu");
+    const dialog = event.currentTarget.closest("dialog");
+    if (dialog && menu.parentElement !== dialog) dialog.append(menu);
+    const soundId = getSoundDurationKey(track);
+    const slider = $("#sound-duration-slider");
+    slider.value = String(Math.round((state.soundDurationEdits[soundId] ?? 1) * 100));
+    $("#sound-duration-title").textContent = track.name;
+    $("#sound-duration-value").textContent = `${slider.value}%`;
+    menu.dataset.soundId = soundId;
+    menu.hidden = false;
+    const bounds = dialog?.getBoundingClientRect() || {
+      left: 0, right: window.innerWidth, top: 0, bottom: window.innerHeight,
+    };
+    menu.style.left = `${Math.max(bounds.left + 8, Math.min(event.clientX, bounds.right - menu.offsetWidth - 8))}px`;
+    menu.style.top = `${Math.max(bounds.top + 8, Math.min(event.clientY, bounds.bottom - menu.offsetHeight - 8))}px`;
+  }
+
+  function setSoundDurationFromMenu(value) {
+    const menu = $("#sound-duration-menu");
+    const soundId = menu.dataset.soundId;
+    if (!soundId) return;
+    const durationScale = Math.max(0.01, Math.min(1, value / 100));
+    if (durationScale === 1) delete state.soundDurationEdits[soundId];
+    else state.soundDurationEdits[soundId] = durationScale;
+    $("#sound-duration-value").textContent = `${Math.round(durationScale * 100)}%`;
+    saveState();
   }
 
   async function applyStepInstrumentSelection() {
@@ -4551,6 +4598,7 @@
       name.title = track.sample?.name || track.subtitle;
       name.setAttribute("aria-label", `Preview ${track.name}`);
       name.addEventListener("click", () => previewInstrumentSound(track));
+      name.addEventListener("contextmenu", (event) => openSoundDurationMenu(track, event));
       row.append(color, name);
       const soundSelect = makeSoundSelect(track, true);
       if (soundSelect) row.append(soundSelect);
@@ -6387,6 +6435,7 @@
   function triggerTrack(track, time, step, variant = track.variant, noteDuration = getStepDuration(), outputTrack = track, outputNode = null, pitchOffset = 0) {
     const context = state.audioContext;
     const pitchRatio = Math.pow(2, ((track.pitch || 0) + pitchOffset) / 12);
+    const soundDurationScale = getSoundDurationScale(track);
     ensureTrackAudio(outputTrack);
     const output = outputNode || outputTrack.gainNode;
     if (track.sample) {
@@ -6396,19 +6445,21 @@
       const sampleDetune = track.sampleHumanized ? (Math.random() - 0.5) * 8 : 0;
       const samplePitchRatio = pitchRatio * Math.pow(2, sampleDetune / 1200);
       const sampleVelocity = track.sampleHumanized ? 0.92 + Math.random() * 0.14 : 1;
+      const sampleDuration = source.buffer.duration * soundDurationScale;
       source.playbackRate.setValueAtTime(samplePitchRatio, time);
       envelope.gain.setValueAtTime(sampleVelocity, time);
       const duration = Math.max(0.005, track.sampleOneShot
-        ? track.sample.buffer.duration / samplePitchRatio
-        : Math.min(track.sample.buffer.duration / samplePitchRatio, noteDuration));
+        ? sampleDuration / samplePitchRatio
+        : Math.min(sampleDuration / samplePitchRatio, noteDuration));
       const fade = Math.min(0.01, duration * 0.1);
       envelope.gain.setValueAtTime(sampleVelocity, time + Math.max(0, duration - fade));
       envelope.gain.linearRampToValueAtTime(0.0001, time + duration);
       source.connect(envelope);
       envelope.connect(output);
-      source.start(time, 0, Math.min(track.sample.buffer.duration, duration * samplePitchRatio));
+      source.start(time, 0, Math.min(sampleDuration, duration * samplePitchRatio));
       return;
     }
+    noteDuration *= soundDurationScale;
     const durationScale = noteDuration / getStepDuration();
     switch (track.kind) {
       case "kick": playKick(context, output, time, step, variant, durationScale, pitchRatio); break;
@@ -6418,7 +6469,7 @@
       case "openhat": playHat(context, output, time, true, variant, durationScale, pitchRatio); break;
       case "rim": playRim(context, output, time, variant, durationScale, pitchRatio); break;
       case "drumkit": playDrumKitNote(track, time, 36, noteDuration, 0.8, outputTrack, output); break;
-      case "instrument": playInstrumentVoice(track, time, 60 + (track.pitch || 0), noteDuration, 0.8, outputTrack, output); break;
+      case "instrument": playInstrumentVoice(track, time, 60 + (track.pitch || 0), noteDuration, 0.8, outputTrack, output, { soundDurationScale }); break;
       default: break;
     }
   }
@@ -6426,6 +6477,7 @@
   function playPianoNote(track, time, midi, duration, velocity = 0.8, outputTrack = track, outputNode = null, noteOptions = {}) {
     if (!track) return;
     velocity *= Math.max(0, Math.min(1, noteOptions.volume ?? 1));
+    const soundDurationScale = getSoundDurationScale(track);
     ensureSequencerTrackAudio(track);
     ensureTrackAudio(outputTrack);
     outputNode ||= outputTrack.gainNode;
@@ -6440,7 +6492,7 @@
       if (track.sampleHumanized) velocity *= 0.92 + Math.random() * 0.14;
       source.buffer = track.sample.buffer;
       source.playbackRate.setValueAtTime(rate, time);
-      const bufferDuration = Math.min(source.buffer.duration, Math.max(0.01, duration) * rate);
+      const bufferDuration = Math.min(source.buffer.duration * soundDurationScale, Math.max(0.01, duration) * rate);
       const outputDuration = bufferDuration / rate;
       const fade = Math.min(0.02, outputDuration * 0.12);
       const attack = Math.min(Math.max(0, Number.isFinite(noteOptions.attack) ? noteOptions.attack : 0), outputDuration * 0.7);
@@ -6454,11 +6506,14 @@
       return;
     }
     if (track.kind === "instrument") {
-      playInstrumentVoice(track, time, midi, duration, velocity, outputTrack, outputNode, noteOptions);
+      playInstrumentVoice(track, time, midi, duration * soundDurationScale, velocity, outputTrack, outputNode, {
+        ...noteOptions,
+        soundDurationScale,
+      });
       return;
     }
     if (track.kind === "drumkit") {
-      playDrumKitNote(track, time, midi, duration, velocity, outputTrack, outputNode, noteOptions.attack);
+      playDrumKitNote(track, time, midi, duration * soundDurationScale, velocity, outputTrack, outputNode, noteOptions.attack);
       return;
     }
     triggerTrack(track, time, 0, track.variant, duration, outputTrack, outputNode, midi - getDefaultStepMidi(track));
@@ -6471,7 +6526,10 @@
     const noteAttack = Number.isFinite(noteOptions.attack) ? noteOptions.attack : Number(patch.attack) || 0.005;
     const attack = Math.min(Math.max(0, noteAttack), Math.max(0.002, duration * 0.7));
     const decay = Math.min(Number(patch.decay) || 0.1, Math.max(0.005, duration - attack));
-    const release = Math.max(0.04, Number(patch.release) || 0.1);
+    const soundDurationScale = Number.isFinite(noteOptions.soundDurationScale)
+      ? Math.max(0.01, Math.min(1, noteOptions.soundDurationScale))
+      : 1;
+    const release = Math.max(0.01, (Number(patch.release) || 0.1) * soundDurationScale);
     const sustain = Math.max(0.04, Math.min(0.9, Number(patch.sustain) || 0.3));
     const gateEnd = time + Math.max(0.02, duration);
     const envelope = context.createGain();
@@ -7187,6 +7245,7 @@
       pianoSnap: state.pianoSnap,
       pianoSnapEnabled: state.pianoSnapEnabled,
       pianoNoteLength: state.pianoNoteLength,
+      soundDurationEdits: { ...state.soundDurationEdits },
       selectedPianoTrackId: savedMel?.instrumentId || state.selectedPianoTrackId,
       arrangementBars: state.arrangementBars,
       arrangementScale: state.arrangementScale,
@@ -7557,6 +7616,10 @@
       if (Number.isFinite(saved.pianoStartBar)) state.pianoStartBar = Math.max(0, Math.min(MAX_ARRANGEMENT_BARS - 1, Math.floor(saved.pianoStartBar)));
       if (Number.isInteger(saved.pianoSnap) && [1, 2, 4, 8].includes(saved.pianoSnap)) state.pianoSnap = saved.pianoSnap;
       if (typeof saved.pianoSnapEnabled === "boolean") state.pianoSnapEnabled = saved.pianoSnapEnabled;
+      if (saved.soundDurationEdits && typeof saved.soundDurationEdits === "object" && !Array.isArray(saved.soundDurationEdits)) {
+        state.soundDurationEdits = Object.fromEntries(Object.entries(saved.soundDurationEdits)
+          .filter(([soundId, scale]) => typeof soundId === "string" && Number.isFinite(scale) && scale >= 0.01 && scale < 1));
+      }
       if (Number.isInteger(saved.pianoNoteLength) && [1, 2, 4, 8].includes(saved.pianoNoteLength)) state.pianoNoteLength = saved.pianoNoteLength;
       if (typeof saved.selectedPianoTrackId === "string" && state.tracks.some((track) => track.id === saved.selectedPianoTrackId)) {
         state.selectedPianoTrackId = saved.selectedPianoTrackId;
@@ -8147,9 +8210,29 @@
     });
     $("#assets-button").addEventListener("click", openAssetLibrary);
     $("#sequencer-browser-button").addEventListener("click", openAssetLibrary);
+    $("#sound-duration-slider").addEventListener("input", (event) => {
+      setSoundDurationFromMenu(Number(event.currentTarget.value));
+    });
+    $("#sound-duration-reset").addEventListener("click", () => {
+      $("#sound-duration-slider").value = "100";
+      setSoundDurationFromMenu(100);
+    });
+    $("#sound-duration-close").addEventListener("click", closeSoundDurationMenu);
+    document.addEventListener("pointerdown", (event) => {
+      const menu = $("#sound-duration-menu");
+      if (!menu.hidden && !menu.contains(event.target)) closeSoundDurationMenu();
+    }, true);
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !$("#sound-duration-menu").hidden) {
+        event.preventDefault();
+        event.stopPropagation();
+        closeSoundDurationMenu();
+      }
+    }, true);
     $("#step-instrument-close").addEventListener("click", () => $("#step-instrument-dialog").close());
     $("#step-instrument-select").addEventListener("click", applyStepInstrumentSelection);
     $("#step-instrument-dialog").addEventListener("close", () => {
+      closeSoundDurationMenu();
       stepInstrumentTargetTrackId = null;
       stepInstrumentPendingId = null;
     });
@@ -8175,6 +8258,7 @@
     $("#add-pattern-button").addEventListener("click", () => addPatternClip());
     $("#source-browser-button").addEventListener("click", openAssetLibrary);
     $("#source-browser-close").addEventListener("click", () => $("#source-browser-dialog").close());
+    $("#source-browser-dialog").addEventListener("close", closeSoundDurationMenu);
     $("#import-recording-button").addEventListener("click", () => requestRecordingImport());
     $("#empty-import-button").addEventListener("click", () => requestRecordingImport());
     $("#side-add-recording").addEventListener("click", () => requestRecordingImport());
