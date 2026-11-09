@@ -8140,6 +8140,12 @@
         event.preventDefault();
         nudgeSelectedArrangementItems(event.key === "ArrowRight" ? 1 : -1);
       }
+      if (!isTyping && !dialogOpen && !event.repeat && !event.ctrlKey && !event.metaKey && !event.altKey &&
+        ["arrangement", "mixer"].includes(state.view) && !state.selectedArrangementItems.size &&
+        event.key === "ArrowLeft") {
+        event.preventDefault();
+        setArrangementCursor(0);
+      }
       if (event.code === "Space" && !isTyping && !isButton && !dialogOpen &&
         !event.ctrlKey && !event.metaKey && !event.altKey) {
         event.preventDefault();
