@@ -163,6 +163,11 @@ h1 { margin: 9px 0 4px; font-size: 28px; font-weight: 600; letter-spacing: -1.05
 .add-step-instrument-row { width: 100%; min-height: 38px; display: flex; align-items: center; justify-content: center; gap: 7px; border: 1px dashed #3c3e44; border-radius: 0; background: #1a1b1e; color: #9aab63; font-size: 10px; cursor: pointer; }
 .add-step-instrument-row:hover { border-color: #687641; background: #20221d; color: var(--accent); }
 .steps-grid { display: grid; grid-template-columns: repeat(var(--grid-step-count), var(--grid-step-size)); align-items: center; gap: var(--grid-step-gap); padding: 0 6px; }
+.steps-grid.has-piano-preview { position: relative; min-height: 44px; align-items: stretch; }
+.steps-grid.has-piano-preview .step-cell { height: 100%; min-height: 44px; opacity: .14; }
+.step-piano-preview { position: absolute; z-index: 2; inset: 0 6px; overflow: hidden; background: repeating-linear-gradient(to bottom, transparent 0, transparent 7px, #ffffff0a 8px); pointer-events: none; }
+.step-piano-preview-bar { position: absolute; top: 0; bottom: 0; width: 1px; background: #d3f36b33; }
+.step-piano-preview-note { position: absolute; height: 3px; min-width: 2px; border-radius: 2px; background: var(--track-color); box-shadow: 0 0 5px color-mix(in srgb, var(--track-color), transparent 25%); }
 .step-cell { position: relative; width: var(--grid-step-size); height: var(--step-cell-height, 21px); padding: 0; border: 1px solid #3c3e44; border-radius: 4px; background: linear-gradient(180deg, #303136, #232428); cursor: pointer; transition: background .09s, border-color .09s, transform .09s; }
 .step-cell.is-beat:not(.is-bar) { margin-left: var(--grid-beat-space); border-left-color: #777980; }
 .step-cell.is-bar { border-left: 2px solid var(--accent); }
@@ -203,6 +208,7 @@ kbd { border: 1px solid #393a3f; border-radius: 3px; padding: 2px 4px; color: #b
 .step-instrument-choice:hover, .step-instrument-choice:focus-visible { border-color: var(--instrument-color); background: #2a2b2e; }
 .step-track-mix-dialog { width: min(480px, calc(100vw - 28px)); overflow-y: auto; }
 .step-track-mix-dialog #step-track-mix-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.step-piano-edit-button { grid-column: 1 / -1; justify-self: start; }
 .step-mix-group { display: grid; align-content: start; gap: 7px; }
 .step-mix-control { grid-template-columns: minmax(48px, .7fr) minmax(70px, 1.4fr) 42px; }
 .project-dialog { position: fixed; width: min(440px, calc(100vw - 30px)); max-height: min(620px, calc(100vh - 32px)); overflow: auto; border: 1px solid #3a3b40; border-radius: 10px; background: #1b1c1f; padding: 22px; color: var(--text); box-shadow: 0 20px 60px #0009; }
@@ -366,6 +372,8 @@ kbd { border: 1px solid #393a3f; border-radius: 3px; padding: 2px 4px; color: #b
 .mel-legend { width: 8px; height: 8px; margin-left: 8px; border: 1px solid #b5a0ff; border-radius: 2px; background: rgba(181,160,255,.3); }
 .piano-roll-view { display: flex; flex-direction: column; gap: 8px; padding: 10px; background: #17181b; }
 .piano-roll-toolbar { display: flex; flex: 0 0 auto; flex-wrap: wrap; align-items: center; gap: 6px; }
+.piano-roll-context { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 8px; border-bottom: 1px solid #303136; padding-bottom: 7px; color: var(--accent); font-family: var(--mono); font-size: 9px; }
+.piano-roll-context[hidden] { display: none; }
 .piano-roll-toolbar .pattern-select-control select { max-width: 130px; }
 .piano-roll-toolbar .quiet-button { height: 30px; }
 .piano-roll-toolbar #piano-draw-mode-button[aria-pressed="true"] { border-color: #687641; background: var(--accent-soft); color: var(--accent); }

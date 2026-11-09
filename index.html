@@ -201,6 +201,10 @@
                     </section>
                     <section class="piano-roll-view" id="piano-roll-view" role="tabpanel" aria-labelledby="piano-roll-tab" hidden>
                       <div class="piano-roll-toolbar">
+                        <div class="piano-roll-context" id="step-piano-context" hidden>
+                          <span id="step-piano-context-label"></span>
+                          <button class="quiet-button" id="step-piano-return" type="button">Back to Step</button>
+                        </div>
                         <button class="quiet-button workspace-play-button" id="piano-workspace-play-button" type="button" aria-label="Play piano roll workspace" aria-pressed="false"><span class="play-icon" aria-hidden="true"></span><span class="workspace-play-label">Play</span></button>
                         <button class="quiet-button" id="piano-draw-mode-button" type="button" aria-pressed="false" title="Toggle note draw mode">Draw</button>
                         <label class="pattern-select-control">
