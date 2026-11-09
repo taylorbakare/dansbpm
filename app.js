@@ -4825,19 +4825,27 @@
         deck.visualPosition = resumePosition;
       } else {
         const cycleTicks = getDjCycleTicks(source);
-        const resumeTick = pausedContentPosition === null
-          ? Math.floor(sourceProgressBars * PIANO_TICKS_PER_BAR) % cycleTicks
-          : Math.floor(pausedContentPosition) % cycleTicks;
-        deck.stepIndex = syncedStart && Number.isFinite(deck.pendingStepIndex)
+        const hasPendingStep = syncedStart && Number.isFinite(deck.pendingStepIndex);
+        const resumePosition = pausedContentPosition === null
+          ? sourceProgressBars * PIANO_TICKS_PER_BAR
+          : pausedContentPosition;
+        const resumePhase = ((resumePosition % cycleTicks) + cycleTicks) % cycleTicks;
+        const nextPhaseTick = Math.ceil(resumePhase - 1e-7);
+        const nextStepPhase = nextPhaseTick % cycleTicks;
+        deck.stepIndex = hasPendingStep
           ? deck.pendingStepIndex
           : deck.reverse
-            ? (cycleTicks - 1 - resumeTick + cycleTicks) % cycleTicks
-            : resumeTick;
+            ? (cycleTicks - 1 - nextStepPhase + cycleTicks) % cycleTicks
+            : nextStepPhase;
         deck.pendingStepIndex = undefined;
+        deck.nextStepTime = startTime + (hasPendingStep ? 0 :
+          Math.max(0, nextPhaseTick - resumePhase) * getSchedulerTickDuration() / getDjRate(deck));
         deck.visualStartTime = startTime;
-        deck.visualStartPosition = deck.reverse
-          ? (cycleTicks - 1 - deck.stepIndex + cycleTicks) % cycleTicks
-          : deck.stepIndex;
+        deck.visualStartPosition = hasPendingStep
+          ? deck.reverse
+            ? (cycleTicks - 1 - deck.stepIndex + cycleTicks) % cycleTicks
+            : deck.stepIndex
+          : resumePhase;
         deck.visualPosition = deck.visualStartPosition;
         deck.timerId = window.setInterval(() => {
           try {
