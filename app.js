@@ -2916,6 +2916,7 @@
     } else if (workspace === "arrangement") {
       const trackIds = state.patterns.flatMap((pattern) => getPatternTrackIds(pattern));
       tracks = trackIds.map((trackId) => state.tracks.find((track) => track.id === trackId));
+      tracks.push(...state.melTracks.map((track) => getPianoTrack(track.instrumentId)));
     }
     const uniqueSamples = new Map();
     tracks.filter((track) => track?.sampleUrl).forEach((track) => uniqueSamples.set(track.sampleUrl, track));
@@ -3390,8 +3391,8 @@
     crossfader: 50,
     liveSlots: Array(8).fill(null),
     decks: {
-      A: { sourceKey: "", volume: 0.8, filter: 20000, pitch: 0, reverse: false, startOffsetBars: 0, playing: false, timerId: null, audioSource: null, filterNode: null, gainNode: null, nextStepTime: 0, stepIndex: 0, scratchRate: 1, isScratching: false },
-      B: { sourceKey: "", volume: 0.8, filter: 20000, pitch: 0, reverse: false, startOffsetBars: 0, playing: false, timerId: null, audioSource: null, filterNode: null, gainNode: null, nextStepTime: 0, stepIndex: 0, scratchRate: 1, isScratching: false },
+      A: { sourceKey: "", volume: 0.8, filter: 20000, pitch: 0, reverse: false, startOffsetBars: 0, playing: false, timerId: null, audioSource: null, songSources: new Set(), songGains: new Map(), songEvents: new Set(), songAnchorTime: 0, songPositionBar: 0, songRate: 1, songDurationBars: 0, songEndTime: 0, filterNode: null, gainNode: null, nextStepTime: 0, stepIndex: 0, scratchRate: 1, nudgeRate: 1, isScratching: false },
+      B: { sourceKey: "", volume: 0.8, filter: 20000, pitch: 0, reverse: false, startOffsetBars: 0, playing: false, timerId: null, audioSource: null, songSources: new Set(), songGains: new Map(), songEvents: new Set(), songAnchorTime: 0, songPositionBar: 0, songRate: 1, songDurationBars: 0, songEndTime: 0, filterNode: null, gainNode: null, nextStepTime: 0, stepIndex: 0, scratchRate: 1, nudgeRate: 1, isScratching: false },
     },
   };
   let djVisualTimer = null;
@@ -3470,6 +3471,18 @@
     }
   }
 
+  function getDjArrangementDurationBars() {
+    const patternEnd = state.patternClips.reduce((end, clip) =>
+      Math.max(end, clip.startBar + getArrangementClipDuration("pattern", clip)), 0);
+    const melEnd = state.melTracks.reduce((end, track) => track.clips.reduce((latest, clip) =>
+      Math.max(latest, clip.startBar + getArrangementClipDuration("mel", clip)), end), 0);
+    const audioEnd = state.arrangementTracks.reduce((end, track) => track.clips.reduce((latest, clip) => {
+      const duration = clip.durationSeconds ?? clip.buffer?.duration ?? 0;
+      return Math.max(latest, clip.startBar + duration / (240 / state.bpm));
+    }, end), 0);
+    return Math.max(patternEnd, melEnd, audioEnd);
+  }
+
   function getDjSource(sourceKey) {
     if (typeof sourceKey !== "string" || !sourceKey) return null;
     const separator = sourceKey.indexOf(":");
@@ -3488,22 +3501,30 @@
       const track = state.arrangementTracks.find((item) => item.id === id);
       return track ? { type, id, name: track.name, item: track } : null;
     }
+    if (type === "song" && id === "current" && getDjArrangementDurationBars() > 0) {
+      return { type, id, name: `${state.projectName || "Current Song"} (Full Song)`, item: state };
+    }
     return null;
   }
 
   function getDjCycleTicks(source) {
     if (source?.type === "pattern") return Math.max(1, (source.item.steps || 16) * 2);
     if (source?.type === "mel") return Math.max(1, Math.round(getMelLengthBars(source.item) * PIANO_TICKS_PER_BAR));
+    if (source?.type === "song") return Math.max(1, Math.ceil(getDjArrangementDurationBars() * PIANO_TICKS_PER_BAR));
     return 0;
   }
 
   function getDjSourceOptions() {
-    return [
+    const groups = [
       { label: "Patterns", items: (state.patterns || []).map((item) => ({ key: `pattern:${item.id}`, name: item.name })) },
       { label: "Mels", items: (state.mels || []).map((item) => ({ key: `mel:${item.id}`, name: item.name })) },
       { label: "Imported audio", items: state.arrangementTracks.filter((item) => item.clips.length)
         .map((item) => ({ key: `audio:${item.id}`, name: item.name })) },
     ];
+    if (getDjArrangementDurationBars() > 0) {
+      groups.unshift({ label: "Arrangement", items: [{ key: "song:current", name: `${state.projectName || "Current Song"} (Full Song)` }] });
+    }
+    return groups;
   }
 
   function renderDjView() {
@@ -3515,7 +3536,7 @@
       select.replaceChildren();
       const placeholder = document.createElement("option");
       placeholder.value = "";
-      placeholder.textContent = "Choose a pattern, Mel, or audio track";
+      placeholder.textContent = "Choose a song, pattern, Mel, or audio track";
       select.append(placeholder);
       groups.forEach((group) => {
         if (!group.items.length) return;
@@ -3587,6 +3608,32 @@
   function getDjTimelineData(deckId) {
     const source = getDjSource(djState.decks[deckId].sourceKey);
     if (!source) return null;
+    if (source.type === "song") {
+      const notes = [
+        ...state.patternClips.map((clip) => ({
+          startTick: clip.startBar * PIANO_TICKS_PER_BAR,
+          durationTicks: getArrangementClipDuration("pattern", clip) * PIANO_TICKS_PER_BAR,
+          velocity: 0.7,
+        })),
+        ...state.melTracks.flatMap((track) => track.clips.map((clip) => ({
+          startTick: clip.startBar * PIANO_TICKS_PER_BAR,
+          durationTicks: getArrangementClipDuration("mel", clip) * PIANO_TICKS_PER_BAR,
+          velocity: 0.7,
+        }))),
+        ...state.arrangementTracks.flatMap((track) => track.clips.map((clip) => ({
+          startTick: clip.startBar * PIANO_TICKS_PER_BAR,
+          durationTicks: (clip.durationSeconds ?? clip.buffer?.duration ?? 0) /
+            (240 / state.bpm) * PIANO_TICKS_PER_BAR,
+          velocity: 0.7,
+        }))),
+      ];
+      return {
+        source,
+        kind: "ticks",
+        loopTicks: Math.max(1, Math.ceil(getDjArrangementDurationBars() * PIANO_TICKS_PER_BAR)),
+        lanes: [{ name: source.name, color: "#9bc6ff", notes }],
+      };
+    }
     if (source.type === "pattern") {
       const pattern = source.item;
       const stepCount = getGridStepCount(pattern);
@@ -3826,13 +3873,14 @@
       }
 
       const isAudio = data.kind === "audio";
+      const isSong = data.source.type === "song";
       const loopSpan = isAudio ? data.loopSeconds : data.loopTicks;
       const now = state.audioContext?.currentTime || 0;
       const rate = isAudio ? (deck.audioSource?.playbackRate.value || getDjRate(deck)) : getDjRate(deck);
       const position = getDjVisualPosition(deck);
       const isLive = canvas.dataset.waveform === "live";
       const liveSpan = DJ_ARRANGEMENT_BARS * 240 / state.bpm;
-      const visibleSpan = isLive ? liveSpan : loopSpan * 2;
+      const visibleSpan = isLive ? liveSpan : isSong ? loopSpan : loopSpan * 2;
       const start = isLive ? Math.max(0, now - visibleSpan * 0.75) : Math.max(0, position - visibleSpan * 0.75);
       const playheadPosition = isLive ? now : position;
       const liveStartTime = Number.isFinite(deck.dragPreviewStartTime)
@@ -3901,8 +3949,9 @@
           const timelineTick = isLive
             ? liveStartPosition + (timelineValue - liveStartTime) * state.bpm / 60 * 8 * rate
             : timelineValue;
-          const phase = ((timelineTick % loopSpan) + loopSpan) % loopSpan;
-          const sourceTick = deck.reverse ? loopSpan - 1 - phase : phase;
+          if (isSong && (timelineTick < 0 || timelineTick >= loopSpan)) continue;
+          const phase = isSong ? timelineTick : ((timelineTick % loopSpan) + loopSpan) % loopSpan;
+          const sourceTick = !isSong && deck.reverse ? loopSpan - 1 - phase : phase;
           let peak = 0;
           data.lanes.forEach((lane) => {
             if (Array.isArray(lane.cells) && lane.ticksPerStep) {
@@ -3947,6 +3996,7 @@
   function updateDjDeckUI(deckId) {
     const deck = djState.decks[deckId];
     const suffix = deckId.toLowerCase();
+    const source = getDjSource(deck.sourceKey);
     $(`#dj-deck-${suffix}`).classList.toggle("is-active", djState.activeDeck === deckId);
     $(`#dj-focus-${suffix}`).setAttribute("aria-pressed", String(djState.activeDeck === deckId));
     const playButton = $(`#dj-play-${suffix}`);
@@ -3955,20 +4005,28 @@
     playButton.setAttribute("aria-pressed", String(deck.playing));
     const platter = $(`#dj-platter-${suffix}`);
     platter.classList.toggle("is-playing", deck.playing);
-    platter.classList.toggle("is-reverse", deck.reverse);
+    platter.classList.toggle("is-reverse", source?.type !== "song" && deck.reverse);
     platter.classList.toggle("is-scratching", deck.isScratching);
     platter.style.setProperty("--dj-spin-duration", `${1.8 / Math.max(0.25, getDjRate(deck))}s`);
-    $(`#dj-reverse-${suffix}`).setAttribute("aria-pressed", String(deck.reverse));
+    const reverseButton = $(`#dj-reverse-${suffix}`);
+    reverseButton.disabled = source?.type === "song";
+    reverseButton.title = source?.type === "song" ? "Reverse is unavailable for full-song arrangements." : "";
+    reverseButton.setAttribute("aria-pressed", String(source?.type !== "song" && deck.reverse));
     updateDjDeckDisplays(deckId);
   }
 
   function getDjRate(deck) {
-    return Math.max(0.25, (1 + deck.pitch / 100) * (deck.scratchRate || 1));
+    return Math.max(0.25, (1 + deck.pitch / 100) * (deck.scratchRate || 1) * (deck.nudgeRate || 1));
   }
 
   function getDjVisualPosition(deck) {
     const source = getDjSource(deck.sourceKey);
     const startPosition = Number.isFinite(deck.visualStartPosition) ? deck.visualStartPosition : 0;
+    if (source?.type === "song" && deck.playing && state.audioContext) {
+      const secondsPerBar = 240 / state.bpm / deck.songRate;
+      const currentBar = deck.songPositionBar + Math.max(0, state.audioContext.currentTime - deck.songAnchorTime) / secondsPerBar;
+      return Math.min(deck.songDurationBars * PIANO_TICKS_PER_BAR, currentBar * PIANO_TICKS_PER_BAR);
+    }
     if (!deck.playing || !state.audioContext || !Number.isFinite(deck.visualStartTime)) {
       return Number.isFinite(deck.visualPosition) ? deck.visualPosition : startPosition;
     }
@@ -4005,9 +4063,11 @@
     let display = "00:00";
     if (timeline?.kind === "ticks") {
       const progress = getDjVisualPosition(deck);
-      const loopTick = deck.reverse
-        ? timeline.loopTicks - 1 - (progress % timeline.loopTicks)
-        : progress % timeline.loopTicks;
+      const loopTick = source?.type === "song"
+        ? Math.min(timeline.loopTicks, progress)
+        : deck.reverse
+          ? timeline.loopTicks - 1 - (progress % timeline.loopTicks)
+          : progress % timeline.loopTicks;
       const bar = Math.floor(loopTick / PIANO_TICKS_PER_BAR) + 1;
       const beat = Math.floor(loopTick % PIANO_TICKS_PER_BAR / 8) + 1;
       display = `B${bar} · ${beat}`;
@@ -4024,6 +4084,10 @@
 
   function toggleDjReverse(deckId) {
     const deck = djState.decks[deckId];
+    if (getDjSource(deck.sourceKey)?.type === "song") {
+      showToast("Reverse is unavailable for full-song arrangements.");
+      return;
+    }
     const wasPlaying = deck.playing;
     if (wasPlaying) stopDjDeck(deckId);
     deck.reverse = !deck.reverse;
@@ -4074,6 +4138,7 @@
     deck.isScratching = false;
     deck.scratchPointerId = null;
     deck.scratchRate = 1;
+    deck.nudgeRate = 1;
     if (deck.nudgeTimer !== null) window.clearTimeout(deck.nudgeTimer);
     deck.nudgeTimer = null;
     if (deck.audioSource) {
@@ -4082,6 +4147,15 @@
       deck.audioSource.disconnect();
     }
     deck.audioSource = null;
+    deck.songSources.forEach((source) => {
+      source.onended = null;
+      try { source.stop(); } catch { /* The source may have ended between scheduler ticks. */ }
+      source.disconnect();
+    });
+    deck.songSources.clear();
+    deck.songGains.forEach((gain) => gain.disconnect());
+    deck.songGains.clear();
+    deck.songEvents.clear();
     deck.playing = false;
     updateDjDeckUI(deckId);
     refreshDjVisualTimer();
@@ -4096,6 +4170,7 @@
     }
     try {
       await ensureAudio();
+      if (source.type === "song") await loadLibrarySamplesForPlayback("arrangement");
       ensureDjDeckAudio(deck);
       const syncedStart = deck.syncedStartTime > 0;
       const startTime = Math.max(state.audioContext.currentTime + 0.04, deck.syncedStartTime || 0) +
@@ -4105,7 +4180,28 @@
       deck.visualStopTime = null;
       deck.nextStepTime = startTime;
       deck.playing = true;
-      if (source.type === "audio") {
+      if (source.type === "song") {
+        deck.songSources = new Set();
+        deck.songGains = new Map();
+        deck.songEvents = new Set();
+        deck.songPositionBar = 0;
+        deck.songAnchorTime = startTime;
+        deck.songRate = getDjRate(deck);
+        deck.songDurationBars = getDjArrangementDurationBars();
+        deck.songEndTime = getDjSongTimeForBar(deck, deck.songDurationBars);
+        deck.visualStartTime = startTime;
+        deck.visualStartPosition = 0;
+        deck.visualPosition = 0;
+        deck.timerId = window.setInterval(() => {
+          try {
+            scheduleDjDeck(deckId);
+          } catch (error) {
+            stopDjDeck(deckId);
+            showToast(error.message || "DJ song playback stopped unexpectedly.");
+          }
+        }, 25);
+        scheduleDjDeck(deckId);
+      } else if (source.type === "audio") {
         const clip = source.item.clips.find((item) => item.buffer);
         if (!clip) {
           deck.playing = false;
@@ -4188,10 +4284,189 @@
     });
   }
 
+  function getDjSongTimeForBar(deck, bar) {
+    return deck.songAnchorTime + (bar - deck.songPositionBar) * 240 / state.bpm / deck.songRate;
+  }
+
+  function updateDjSongRate(deck) {
+    if (!deck.playing || getDjSource(deck.sourceKey)?.type !== "song" || !state.audioContext) return;
+    const now = state.audioContext.currentTime;
+    const secondsPerBar = 240 / state.bpm / deck.songRate;
+    deck.songPositionBar = Math.min(deck.songDurationBars,
+      deck.songPositionBar + Math.max(0, now - deck.songAnchorTime) / secondsPerBar);
+    deck.songAnchorTime = now;
+    deck.visualStartTime = now;
+    deck.visualStartPosition = deck.songPositionBar * PIANO_TICKS_PER_BAR;
+    deck.songRate = getDjRate(deck);
+    deck.songEndTime = getDjSongTimeForBar(deck, deck.songDurationBars);
+    deck.songSources.forEach((source) => {
+      source.playbackRate.setTargetAtTime(deck.songRate, now, 0.015);
+    });
+  }
+
+  function getDjSongGain(deck, key, volume) {
+    let gain = deck.songGains.get(key);
+    const level = Number.isFinite(volume) ? Math.max(0, Math.min(1, volume)) : 1;
+    if (!gain) {
+      gain = state.audioContext.createGain();
+      gain.gain.value = level;
+      gain.connect(deck.filterNode);
+      deck.songGains.set(key, gain);
+    }
+    return gain;
+  }
+
+  function scheduleDjArrangement(deckId) {
+    const deck = djState.decks[deckId];
+    if (!deck.playing || !state.audioContext || state.audioContext.currentTime >= deck.songEndTime) {
+      if (deck.playing) stopDjDeck(deckId);
+      return;
+    }
+    const now = state.audioContext.currentTime;
+    const lookAhead = 0.12;
+    const endTime = deck.songEndTime;
+    const secondsPerBar = 240 / state.bpm / deck.songRate;
+    const currentBar = deck.songPositionBar + Math.max(0, now - deck.songAnchorTime) / secondsPerBar;
+    const lookAheadBars = lookAhead / secondsPerBar;
+    const hasArrangementSolo = [...state.tracks, ...state.arrangementTracks].some((track) => track.solo);
+    const hasMelSolo = state.melTracks.some((track) => track.solo);
+    const hasInstrumentSolo = state.tracks.some((track) => track.solo);
+    const isInLookAhead = (time) => time >= now && time < now + lookAhead && time < endTime;
+
+    state.arrangementTracks.forEach((track) => {
+      if (track.muted || (hasArrangementSolo && !track.solo)) return;
+      track.clips.forEach((clip) => {
+        const key = `audio:${clip.id}`;
+        if (deck.songEvents.has(key) || !clip.buffer) return;
+        const time = getDjSongTimeForBar(deck, clip.startBar);
+        if (!isInLookAhead(time)) return;
+        const sourceOffset = Math.max(0, clip.sourceOffsetSeconds || 0);
+        const duration = Math.min(clip.buffer.duration - sourceOffset,
+          clip.durationSeconds ?? clip.buffer.duration, Math.max(0, (endTime - time) * deck.songRate));
+        if (duration <= 0) return;
+        const player = state.audioContext.createBufferSource();
+        player.buffer = clip.buffer;
+        player.playbackRate.value = deck.songRate;
+        player.connect(getDjSongGain(deck, `audio:${track.id}`, track.volume));
+        player.onended = () => {
+          deck.songSources.delete(player);
+          player.disconnect();
+        };
+        player.start(time, sourceOffset, duration);
+        deck.songSources.add(player);
+        deck.songEvents.add(key);
+      });
+    });
+
+    state.patternClips.forEach((clip) => {
+      const pattern = getPattern(clip.patternId);
+      if (!pattern) return;
+      const patternTrack = state.patterns.find((item) => item.id === (clip.trackId || clip.patternId)) || pattern;
+      if (patternTrack.muted) return;
+      const stepsPerBar = getStepsPerBar(pattern);
+      const sourceOffset = clip.sourceOffsetBars || 0;
+      const sourceBars = pattern.steps / 16 * (clip.repeatCount || 1);
+      const clipDuration = getArrangementClipDuration("pattern", clip);
+      const sourceEndStep = Math.min(sourceBars * stepsPerBar,
+        Math.ceil((sourceOffset + clipDuration) * stepsPerBar - 0.0001));
+      const currentSourceStep = (sourceOffset + currentBar - clip.startBar) * stepsPerBar;
+      const firstStep = Math.max(0, Math.ceil(sourceOffset * stepsPerBar - 0.0001), Math.floor(currentSourceStep) - 3);
+      const lastStep = Math.min(sourceEndStep,
+        Math.ceil((sourceOffset + currentBar + lookAheadBars - clip.startBar) * stepsPerBar) + 4);
+      const gridStepCount = getGridStepCount(pattern);
+      const ticksPerGridStep = getGridTicksPerStep(pattern);
+      const patternTrackIds = getPatternTrackIds(pattern);
+
+      for (let sourceStep = firstStep; sourceStep < lastStep; sourceStep += 1) {
+        const sourcePosition = sourceStep / stepsPerBar;
+        const sourceOffsetBars = sourcePosition - sourceOffset;
+        const patternStep = sourceStep % gridStepCount;
+        const tick = patternStep * ticksPerGridStep;
+        const bar = clip.startBar + sourceOffsetBars;
+        const time = getDjSongTimeForBar(deck, bar) +
+          (Math.floor(tick / 2) % 2 === 1 ? getStepDuration() * state.swing / 100 / deck.songRate : 0);
+        if (!isInLookAhead(time)) continue;
+        state.tracks.forEach((track) => {
+          if (!patternTrackIds.includes(track.id) || !pattern.cells?.[track.id]?.[patternStep] ||
+            track.muted || (hasInstrumentSolo && !track.solo) ||
+            Array.isArray(pattern.stepPianoNotes?.[track.id])) return;
+          const eventKey = `pattern:${clip.id}:${sourceStep}:${track.id}`;
+          if (deck.songEvents.has(eventKey)) return;
+          const trackTime = time + (getTrackStepTime(track, patternStep, pattern, time) - time) / deck.songRate;
+          const volume = (patternTrack.volume ?? 1) * (track.volume ?? 1);
+          triggerTrack(track, trackTime, patternStep, pattern.variants?.[track.id] || track.variant,
+            getNoteDuration(pattern) / deck.songRate, patternTrack,
+            getDjSongGain(deck, `pattern:${clip.id}:${track.id}`, volume));
+          deck.songEvents.add(eventKey);
+        });
+      }
+
+      const patternBars = pattern.steps / 16;
+      const loopCount = Math.ceil(sourceBars / patternBars);
+      Object.entries(pattern.stepPianoNotes || {}).forEach(([trackId, notes]) => {
+        const track = state.tracks.find((item) => item.id === trackId);
+        if (!track || !Array.isArray(notes) || !patternTrackIds.includes(trackId) ||
+          patternTrack.muted || track.muted || (hasInstrumentSolo && !track.solo)) return;
+        for (let loop = 0; loop < loopCount; loop += 1) {
+          notes.forEach((note) => {
+            const sourcePosition = loop * patternBars + note.startTick / PIANO_TICKS_PER_BAR;
+            if (sourcePosition < sourceOffset || sourcePosition >= sourceOffset + clipDuration) return;
+            const bar = clip.startBar + sourcePosition - sourceOffset;
+            const time = getDjSongTimeForBar(deck, bar) +
+              (Math.floor(note.startTick / 2) % 2 === 1 ? getStepDuration() * state.swing / 100 / deck.songRate : 0);
+            const eventKey = `pattern-piano:${clip.id}:${trackId}:${loop}:${note.id}`;
+            if (deck.songEvents.has(eventKey) || !isInLookAhead(time)) return;
+            const clipEnd = (sourceOffset + clipDuration - sourcePosition) * secondsPerBar;
+            const duration = Math.min(note.durationTicks * getSchedulerTickDuration() / deck.songRate, clipEnd);
+            if (duration > 0) {
+              playPianoNote(track, time, note.midi, duration, note.velocity ?? 0.8, patternTrack,
+                getDjSongGain(deck, `pattern:${clip.id}:${trackId}`, (patternTrack.volume ?? 1) * (track.volume ?? 1)), note);
+              deck.songEvents.add(eventKey);
+            }
+          });
+        }
+      });
+    });
+
+    state.melTracks.forEach((melTrack) => {
+      const instrument = getPianoTrack(melTrack.instrumentId);
+      if (!instrument || melTrack.muted || (hasMelSolo && !melTrack.solo) ||
+        instrument.muted || (hasInstrumentSolo && !instrument.solo)) return;
+      melTrack.clips.forEach((clip) => {
+        const mel = getMel(clip.melId);
+        if (!mel) return;
+        const sourceOffset = clip.sourceOffsetBars || 0;
+        const sourceEnd = Math.min(getMelLengthBars(mel), sourceOffset + getArrangementClipDuration("mel", clip));
+        mel.notes.forEach((note) => {
+          const noteStartSource = note.startTick / PIANO_TICKS_PER_BAR;
+          const noteEndSource = noteStartSource + note.durationTicks / PIANO_TICKS_PER_BAR;
+          const audibleStart = Math.max(sourceOffset, noteStartSource);
+          const audibleEnd = Math.min(sourceEnd, noteEndSource);
+          if (audibleEnd <= audibleStart) return;
+          const noteStartBar = clip.startBar + audibleStart - sourceOffset;
+          const noteEndBar = clip.startBar + audibleEnd - sourceOffset;
+          const time = getDjSongTimeForBar(deck, noteStartBar);
+          const eventKey = `mel:${melTrack.id}:${clip.id}:${note.id}`;
+          if (deck.songEvents.has(eventKey) || !isInLookAhead(time)) return;
+          const duration = Math.min((noteEndBar - noteStartBar) * secondsPerBar, endTime - time);
+          if (duration > 0) {
+            playPianoNote(instrument, time, note.midi, duration, note.velocity ?? 0.8, melTrack,
+              getDjSongGain(deck, `mel:${melTrack.id}:${clip.id}`, melTrack.volume), note);
+            deck.songEvents.add(eventKey);
+          }
+        });
+      });
+    });
+  }
+
   function scheduleDjDeck(deckId) {
     const deck = djState.decks[deckId];
     if (!deck.playing || !state.audioContext) return;
     const source = getDjSource(deck.sourceKey);
+    if (source?.type === "song") {
+      scheduleDjArrangement(deckId);
+      return;
+    }
     if (!source || source.type === "audio") return;
     const now = state.audioContext.currentTime;
     const tickDuration = getSchedulerTickDuration() / getDjRate(deck);
@@ -4282,7 +4557,16 @@
 
   function nudgeDjDeck(deckId, direction) {
     const deck = djState.decks[deckId];
-    if (deck.audioSource && state.audioContext) {
+    if (getDjSource(deck.sourceKey)?.type === "song" && deck.playing && state.audioContext) {
+      deck.nudgeRate = direction > 0 ? 1.02 : 0.98;
+      updateDjSongRate(deck);
+      if (deck.nudgeTimer !== null) window.clearTimeout(deck.nudgeTimer);
+      deck.nudgeTimer = window.setTimeout(() => {
+        deck.nudgeRate = 1;
+        updateDjSongRate(deck);
+        deck.nudgeTimer = null;
+      }, 250);
+    } else if (deck.audioSource && state.audioContext) {
       deck.audioSource.playbackRate.setTargetAtTime(getDjRate(deck) * (direction > 0 ? 1.02 : 0.98), state.audioContext.currentTime, 0.01);
       if (deck.nudgeTimer !== null) window.clearTimeout(deck.nudgeTimer);
       deck.nudgeTimer = window.setTimeout(() => {
@@ -4498,6 +4782,7 @@
       $(`#dj-pitch-${suffix}`).addEventListener("input", (event) => {
         const deck = djState.decks[deckId];
         deck.pitch = Number(event.target.value);
+        updateDjSongRate(deck);
         if (deck.audioSource && state.audioContext) {
           deck.audioSource.playbackRate.setTargetAtTime(getDjRate(deck), state.audioContext.currentTime, 0.015);
         }
@@ -4536,6 +4821,7 @@
         else if (delta < -Math.PI) delta += Math.PI * 2;
         deck.scratchLastAngle = angle;
         deck.scratchRate = Math.max(0.25, Math.min(2.5, 1 + delta * 1.5));
+        updateDjSongRate(deck);
         if (deck.audioSource && state.audioContext) {
           deck.audioSource.playbackRate.setTargetAtTime(getDjRate(deck), state.audioContext.currentTime, 0.005);
         }
@@ -4547,6 +4833,7 @@
         deck.isScratching = false;
         deck.scratchPointerId = null;
         deck.scratchRate = 1;
+        updateDjSongRate(deck);
         if (deck.audioSource && state.audioContext) {
           deck.audioSource.playbackRate.setTargetAtTime(getDjRate(deck), state.audioContext.currentTime, 0.04);
         }
