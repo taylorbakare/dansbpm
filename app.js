@@ -8395,11 +8395,15 @@
     document.addEventListener("keydown", (event) => {
       const target = event.target;
       const isTyping = target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
-      const isButton = target instanceof HTMLElement && target.tagName === "BUTTON";
+      const isTextEntry = target instanceof HTMLElement && (
+        target.isContentEditable || target.tagName === "TEXTAREA" ||
+        (target.tagName === "INPUT" && !["button", "submit", "reset", "checkbox", "radio", "range", "color", "file", "hidden", "image"].includes(target.type))
+      );
       const dialogOpen = $("#help-dialog").open || $("#project-dialog").open || $("#source-browser-dialog").open ||
         $("#step-instrument-dialog").open || $("#step-track-mix-dialog").open;
-      if (event.code === "Space" && (event.ctrlKey || event.metaKey) && !event.altKey && !isTyping && !dialogOpen) {
+      if (event.code === "Space" && (event.ctrlKey || event.metaKey) && !event.altKey && !isTextEntry) {
         event.preventDefault();
+        if (event.repeat) return;
         if (state.keyboardRecordingCountdown) cancelKeyboardRecordingCountdown();
         toggleCurrentWorkspacePlayback();
         return;
@@ -8472,9 +8476,9 @@
         event.preventDefault();
         setArrangementCursor(0);
       }
-      if (event.code === "Space" && !isTyping && !isButton && !dialogOpen &&
-        !event.ctrlKey && !event.metaKey && !event.altKey) {
+      if (event.code === "Space" && !isTextEntry && !event.ctrlKey && !event.metaKey && !event.altKey) {
         event.preventDefault();
+        if (event.repeat) return;
         if (state.keyboardRecordingCountdown) cancelKeyboardRecordingCountdown();
         if (state.isPlaying && state.playbackMode === "arrangement") stopPlayback();
         else {
