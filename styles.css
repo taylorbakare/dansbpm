@@ -704,6 +704,7 @@ kbd { border: 1px solid #393a3f; border-radius: 3px; padding: 2px 4px; color: #b
 .dj-live-slot:hover, .dj-live-slot.is-filled { border-color: #687641; background: #25281f; }
 .dj-live-slot strong { display: block; color: var(--accent); font-family: var(--mono); font-size: 8px; }
 .dj-live-slot span { display: block; overflow: hidden; margin-top: 3px; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.dj-live-slot-picker { width: 100%; min-height: 48px; border: 1px solid #687641; border-radius: 6px; background: #202125; padding: 6px; color: #c9cac6; font-size: 8px; }
 .dj-live-slot-clear { position: absolute; top: 4px; right: 4px; width: 15px; height: 15px; border: 0; background: transparent; padding: 0; color: #85868b; font-size: 11px; cursor: pointer; }
 .dj-pad-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
 .dj-pad { min-height: 36px; border: 1px solid #3a3b40; border-radius: 6px; background: linear-gradient(145deg, #292a2e, #1d1e21); color: #d7d8d2; font-size: 9px; cursor: pointer; }

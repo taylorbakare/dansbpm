@@ -3598,6 +3598,8 @@
       B: { sourceKey: "", volume: 0.8, filter: 20000, eqLow: 0, eqMid: 0, eqHigh: 0, pitch: 0, syncRate: 1, reverse: false, startOffsetBars: 0, playing: false, timerId: null, audioSource: null, songSources: new Set(), songGains: new Map(), songEvents: new Set(), songAnchorTime: 0, songPositionBar: 0, songRate: 1, songDurationBars: 0, songEndTime: 0, filterNode: null, eqLowNode: null, eqMidNode: null, eqHighNode: null, gainNode: null, audioContext: null, djMasterInput: null, nextStepTime: 0, stepIndex: 0, scratchRate: 1, nudgeRate: 1, isScratching: false },
     },
   };
+  let djOpenLiveSlot = null;
+
   function getDjArrangementPositionBar() {
     if (Number.isFinite(djState.arrangementStopTime) ||
       !state.audioContext || !Number.isFinite(djState.arrangementStartTime)) {
@@ -3919,13 +3921,47 @@
       trigger.className = `dj-live-slot${slot ? " is-filled" : ""}`;
       trigger.type = "button";
       trigger.dataset.slot = String(index);
-      trigger.title = slot ? `Load ${slot.name} to the active deck` : "Empty live slot";
+      trigger.title = slot ? `Load ${slot.name} to the active deck` : "Choose a source for this cue slot";
       const key = document.createElement("strong");
       key.textContent = `F${index + 1}`;
       const name = document.createElement("span");
-      name.textContent = slot?.name || "Empty";
+      name.textContent = slot?.name || "Tap to add";
       trigger.append(key, name);
-      wrapper.append(trigger);
+      if (!slot && djOpenLiveSlot === index) {
+        const picker = document.createElement("select");
+        picker.className = "dj-live-slot-picker";
+        picker.dataset.slotPicker = String(index);
+        picker.setAttribute("aria-label", `Choose a source for cue slot ${index + 1}`);
+        const placeholder = document.createElement("option");
+        placeholder.value = "";
+        placeholder.textContent = "Choose source...";
+        picker.append(placeholder);
+        groups.forEach((group) => {
+          if (!group.items.length) return;
+          const optionGroup = document.createElement("optgroup");
+          optionGroup.label = group.label;
+          group.items.forEach((item) => {
+            const option = document.createElement("option");
+            option.value = item.key;
+            option.textContent = item.name;
+            optionGroup.append(option);
+          });
+          picker.append(optionGroup);
+        });
+        if (!groups.some((group) => group.items.length)) {
+          placeholder.textContent = "No sources available";
+        }
+        picker.addEventListener("keydown", (event) => {
+          if (event.key !== "Escape") return;
+          event.preventDefault();
+          djOpenLiveSlot = null;
+          renderDjView();
+          $(`#dj-live-slots [data-slot="${index}"]`)?.focus();
+        });
+        wrapper.append(picker);
+      } else {
+        wrapper.append(trigger);
+      }
       if (slot) {
         const clear = document.createElement("button");
         clear.className = "dj-live-slot-clear";
@@ -5266,9 +5302,35 @@
     }
   }
 
-  function addDjLiveSlot(deckId) {
-    const source = getDjSource(djState.decks[deckId].sourceKey);
+  function assignDjLiveSlot(index, sourceKey) {
+    if (!Number.isInteger(index) || index < 0 || index >= djState.liveSlots.length) return;
+    const source = getDjSource(sourceKey);
     if (!source) {
+      showToast("Choose a valid source for this cue slot.");
+      return;
+    }
+    djState.liveSlots[index] = { sourceKey, name: source.name };
+    djOpenLiveSlot = null;
+    saveDjState();
+    renderDjView();
+  }
+
+  function openDjLiveSlotPicker(index) {
+    djOpenLiveSlot = index;
+    renderDjView();
+    const picker = $(`#dj-live-slots [data-slot-picker="${index}"]`);
+    if (typeof picker?.showPicker === "function") picker.showPicker();
+    else picker?.focus();
+  }
+
+  function activateDjLiveSlot(index) {
+    if (djState.liveSlots[index]) loadDjLiveSlot(index);
+    else openDjLiveSlotPicker(index);
+  }
+
+  function addDjLiveSlot(deckId) {
+    const sourceKey = djState.decks[deckId].sourceKey;
+    if (!getDjSource(sourceKey)) {
       showToast("Choose a live source before adding it to a cue slot.");
       return;
     }
@@ -5277,14 +5339,13 @@
       showToast("All cue slots are full.");
       return;
     }
-    djState.liveSlots[index] = { sourceKey: djState.decks[deckId].sourceKey, name: source.name };
-    saveDjState();
-    renderDjView();
+    assignDjLiveSlot(index, sourceKey);
   }
 
   function loadDjLiveSlot(index) {
     const slot = djState.liveSlots[index];
     if (!slot) return;
+    djOpenLiveSlot = null;
     const deckId = djState.activeDeck;
     stopDjDeck(deckId);
     djState.decks[deckId].sourceKey = slot.sourceKey;
@@ -5466,7 +5527,7 @@
     if (padIndex >= 0) {
       if (!event.repeat) playDjPad(padIndex);
     } else if (slotIndex >= 0) {
-      if (!event.repeat) loadDjLiveSlot(slotIndex);
+      if (!event.repeat) activateDjLiveSlot(slotIndex);
     } else if (event.code === "Space") {
       if (!event.repeat) toggleDjDeck(djState.activeDeck);
     } else if (event.code === "BracketLeft") {
@@ -5739,12 +5800,23 @@
         renderDjView();
         return;
       }
+      if (event.target.closest("[data-slot-picker]")) return;
       const slotButton = event.target.closest("[data-slot]");
-      if (slotButton) loadDjLiveSlot(Number(slotButton.dataset.slot));
+      if (slotButton) activateDjLiveSlot(Number(slotButton.dataset.slot));
+    });
+    $("#dj-live-slots").addEventListener("change", (event) => {
+      const picker = event.target.closest("[data-slot-picker]");
+      if (picker?.value) assignDjLiveSlot(Number(picker.dataset.slotPicker), picker.value);
     });
     $("#dj-pad-grid").addEventListener("click", (event) => {
       const pad = event.target.closest("[data-pad]");
       if (pad) playDjPad(Number(pad.dataset.pad));
+    });
+    document.addEventListener("click", (event) => {
+      if (djOpenLiveSlot === null ||
+        (event.target instanceof Element && event.target.closest("#dj-live-slots"))) return;
+      djOpenLiveSlot = null;
+      renderDjView();
     });
     document.addEventListener("keydown", handleDjKeydown, true);
     document.addEventListener("keyup", handleDjKeyup, true);
