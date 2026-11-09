@@ -4299,13 +4299,14 @@
         ? arrangementStart + djState.arrangementViewStartBar * barSeconds
         : Math.max(0, position - visibleSpan * 0.75);
       const playheadPosition = isLive ? (djState.arrangementStopTime ?? now) : position;
-      const liveStartTime = Number.isFinite(deck.dragPreviewStartTime)
+      const isDragPreview = Number.isFinite(deck.dragPreviewStartTime);
+      const liveStartTime = isDragPreview
         ? deck.dragPreviewStartTime
-        : deck.playing && Number.isFinite(deck.visualStartTime)
-          ? deck.visualStartTime
-          : arrangementStart + deck.startOffsetBars * barSeconds;
-      const liveStartPosition = deck.playing && !Number.isFinite(deck.dragPreviewStartTime)
-        ? deck.visualStartPosition || 0
+        : arrangementStart + deck.startOffsetBars * barSeconds;
+      const playbackStartTime = Number.isFinite(deck.visualStartTime) ? deck.visualStartTime : liveStartTime;
+      const unitsPerSecond = isAudio ? rate : state.bpm / 60 * 8 * rate;
+      const liveStartPosition = deck.playing && !isDragPreview
+        ? (deck.visualStartPosition || 0) + (liveStartTime - playbackStartTime) * unitsPerSecond
         : 0;
       const timelineWidth = Math.max(1, width - 16);
       const binCount = Math.max(48, Math.min(900, Math.floor(timelineWidth)));
