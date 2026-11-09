@@ -1056,6 +1056,7 @@
     $("#show-track-view-button").hidden = !state.trackViewHidden;
     $("#hide-track-view-button").hidden = state.trackViewHidden;
     $("#show-workspace-button").hidden = !state.workspaceHidden;
+    updatePianoRulerViewport();
   }
 
   function setViewVisibility(workspaceHidden, trackViewHidden) {
@@ -1340,13 +1341,60 @@
     return `${names[midi % 12]}${Math.floor(midi / 12) - 1}`;
   }
 
-  function updatePianoPlayhead() {
+  function updatePianoRulerViewport() {
+    const view = $("#piano-roll-view");
+    const workspace = $(".workspace-content");
+    const scroll = $("#piano-roll-scroll");
+    const placeholder = $("#piano-roll-ruler-placeholder");
+    const viewport = $("#piano-roll-ruler-viewport");
+    if (view.hidden) {
+      viewport.hidden = true;
+      return;
+    }
+    const workspaceBounds = workspace.getBoundingClientRect();
+    const viewBounds = view.getBoundingClientRect();
+    const placeholderBounds = placeholder.getBoundingClientRect();
+    const scrollBounds = scroll.getBoundingClientRect();
+    const top = Math.max(workspaceBounds.top, placeholderBounds.top);
+    if (workspaceBounds.width <= 0 || workspaceBounds.height <= 0 ||
+      Math.min(workspaceBounds.bottom, viewBounds.bottom) <= workspaceBounds.top ||
+      placeholderBounds.top >= workspaceBounds.bottom) {
+      viewport.hidden = true;
+      return;
+    }
+    viewport.hidden = false;
+    viewport.style.top = `${top}px`;
+    viewport.style.left = `${scrollBounds.left + scroll.clientLeft + 52}px`;
+    viewport.style.width = `${Math.max(0, scroll.clientWidth - 52)}px`;
+  }
+
+  function updatePianoPlayhead(keepVisible = false) {
     const marker = $("#piano-roll-playhead");
-    if (!marker) return;
     const maxTick = state.pianoBars * PIANO_TICKS_PER_BAR;
     const visibleTick = Math.max(0, Math.min(maxTick - 0.001, state.pianoCursorTick));
-    marker.style.left = `${visibleTick * getPianoTickWidth()}px`;
-    marker.setAttribute("aria-valuenow", visibleTick.toFixed(2));
+    const tickWidth = getPianoTickWidth();
+    const playheadX = visibleTick * tickWidth;
+    const scroll = $("#piano-roll-scroll");
+    const visibleWidth = Math.max(0, scroll.clientWidth - 53);
+    if (keepVisible && visibleWidth > 0) {
+      const margin = Math.min(36, visibleWidth / 4);
+      if (playheadX < scroll.scrollLeft + margin) {
+        scroll.scrollLeft = Math.max(0, playheadX - margin);
+      } else if (playheadX > scroll.scrollLeft + visibleWidth - margin) {
+        scroll.scrollLeft = Math.min(scroll.scrollWidth - scroll.clientWidth, playheadX - visibleWidth + margin);
+      }
+    }
+    if (marker) {
+      marker.style.left = `${playheadX}px`;
+      marker.setAttribute("aria-valuenow", visibleTick.toFixed(2));
+    }
+    $("#piano-roll-ruler").style.transform = `translateX(-${scroll.scrollLeft}px)`;
+    const stickyMarker = $("#piano-roll-sticky-playhead");
+    const markerInViewport = playheadX - scroll.scrollLeft;
+    const clippedX = Math.max(0, Math.min(visibleWidth, markerInViewport));
+    stickyMarker.style.left = `${clippedX}px`;
+    stickyMarker.classList.toggle("is-offscreen-left", markerInViewport < 0);
+    stickyMarker.classList.toggle("is-offscreen-right", markerInViewport > visibleWidth);
   }
 
   function updatePianoCursorFromTime(startTime) {
@@ -1355,13 +1403,13 @@
     const loopTicks = Math.max(1, (mel ? getMelLengthBars(mel) : 1) * PIANO_TICKS_PER_BAR);
     const elapsedTicks = Math.max(0, state.audioContext.currentTime - startTime) / (240 / state.bpm) * PIANO_TICKS_PER_BAR;
     state.pianoCursorTick = elapsedTicks % loopTicks;
-    updatePianoPlayhead();
+    updatePianoPlayhead(true);
   }
 
   function setPianoCursorTick(tick, seek = true, persist = true) {
     const maxTick = state.pianoBars * PIANO_TICKS_PER_BAR;
     state.pianoCursorTick = Math.max(0, Math.min(maxTick - 0.001, tick));
-    updatePianoPlayhead();
+    updatePianoPlayhead(true);
     if (seek && state.audioContext) {
       const mel = getMel();
       const loopTicks = Math.max(1, (mel ? getMelLengthBars(mel) : 1) * PIANO_TICKS_PER_BAR);
@@ -1516,6 +1564,7 @@
         });
         grid.append(element);
       });
+      updatePianoRulerViewport();
       updatePianoPlayhead();
   }
 
@@ -8696,9 +8745,13 @@
       if (!event.target.closest(".piano-roll-note")) addPianoNoteFromPointer(event);
     });
     $("#piano-roll-grid").addEventListener("pointerdown", startPianoSelection);
-    $("#piano-roll-scroll").addEventListener("scroll", (event) => {
-      $("#piano-roll-ruler").style.transform = `translateX(-${event.currentTarget.scrollLeft}px)`;
+    $("#piano-roll-scroll").addEventListener("scroll", () => {
+      updatePianoRulerViewport();
+      updatePianoPlayhead();
     });
+    $("#piano-roll-view").addEventListener("scroll", updatePianoRulerViewport);
+    window.addEventListener("scroll", updatePianoRulerViewport, true);
+    window.addEventListener("resize", updatePianoRulerViewport);
     $("#clear-piano-roll-button").addEventListener("click", () => {
       state.pianoNotes = [];
       state.selectedPianoNoteId = null;

@@ -410,7 +410,15 @@ kbd { border: 1px solid #393a3f; border-radius: 3px; padding: 2px 4px; color: #b
 .piano-roll-toolbar .quiet-button { height: 30px; }
 .piano-roll-toolbar #piano-draw-mode-button[aria-pressed="true"] { border-color: #687641; background: var(--accent-soft); color: var(--accent); }
 .piano-roll-scroll { min-height: 0; flex: 1; display: flex; overflow: auto; border: 1px solid #303136; background: #17181b; scrollbar-color: #45464a #1b1c1f; scrollbar-width: thin; }
-.piano-roll-ruler-viewport { position: sticky; top: 0; z-index: 5; height: 28px; min-height: 28px; flex: 0 0 28px; overflow: hidden; margin-left: 53px; width: calc(100% - 53px); background: #202125; }
+.piano-roll-ruler-spacer { height: 28px; min-height: 28px; flex: 0 0 28px; }
+.piano-roll-ruler-viewport { position: fixed; z-index: 25; height: 28px; overflow: hidden; background: #202125; pointer-events: none; }
+.piano-roll-sticky-playhead { position: absolute; top: 0; bottom: 0; z-index: 6; width: 12px; transform: translateX(-6px); pointer-events: none; }
+.piano-roll-sticky-playhead::before { position: absolute; top: 0; left: 1px; width: 10px; height: 8px; background: #f3f4e8; clip-path: polygon(0 0, 100% 0, 50% 100%); content: ""; }
+.piano-roll-sticky-playhead::after { position: absolute; top: 6px; bottom: 0; left: 5px; width: 2px; background: #f3f4e8; box-shadow: 0 0 7px #fff8; content: ""; }
+.piano-roll-sticky-playhead.is-offscreen-left { transform: none; }
+.piano-roll-sticky-playhead.is-offscreen-left::before { clip-path: polygon(0 50%, 100% 0, 100% 100%); }
+.piano-roll-sticky-playhead.is-offscreen-right { transform: translateX(-12px); }
+.piano-roll-sticky-playhead.is-offscreen-right::before { clip-path: polygon(0 0, 100% 50%, 0 100%); }
 .piano-roll-keys { position: sticky; left: 0; z-index: 3; flex: 0 0 52px; width: 52px; background: #1c1d20; box-shadow: 2px 0 5px #0005; }
 .piano-roll-key { width: 52px; height: 18px; display: block; border: 0; border-bottom: 1px solid #35363a; background: #d3d4d0; padding: 0 4px; color: #242529; font-family: var(--mono); font-size: 8px; text-align: right; cursor: pointer; }
 .piano-roll-key.is-black { background: #38393d; color: #ddd; }
